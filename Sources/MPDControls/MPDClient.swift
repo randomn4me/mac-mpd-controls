@@ -7,6 +7,7 @@ public class MPDClient: ObservableObject {
     @Published public var currentSong: Song?
     @Published public var playerState: PlayerState = .stopped
     @Published public var playbackOptions: PlaybackOptions = PlaybackOptions()
+    @Published public var volume: Int = 0
     
     private var connection: NWConnection?
     private let host: String
@@ -350,6 +351,44 @@ public class MPDClient: ObservableObject {
         }
     }
     
+    public func setVolume(_ volume: Int) {
+        let clampedVolume = max(0, min(100, volume))
+        sendCommand("setvol \(clampedVolume)") { [weak self] _ in
+            self?.updateStatus()
+        }
+    }
+    
+    public func increaseVolume(by amount: Int = 5) {
+        setVolume(volume + amount)
+    }
+    
+    public func decreaseVolume(by amount: Int = 5) {
+        setVolume(volume - amount)
+    }
+    
+    public func clear() {
+        sendCommand("clear") { _ in }
+    }
+    
+    public func addUri(_ uri: String) {
+        sendCommand("add \(uri)") { [weak self] _ in
+            self?.updateStatus()
+        }
+    }
+    
+    public func playId(_ id: Int) {
+        sendCommand("playid \(id)") { [weak self] _ in
+            self?.updateStatus()
+            self?.updateCurrentSong()
+        }
+    }
+    
+    public func seek(to position: TimeInterval) {
+        sendCommand("seekcur \(position)") { [weak self] _ in
+            self?.updateStatus()
+        }
+    }
+    
     // MARK: - Response Parsing
     
     private func parseStatusResponse(_ data: [String: String]) {
@@ -389,6 +428,10 @@ public class MPDClient: ObservableObject {
             default:
                 playbackOptions.consume = .off
             }
+        }
+        
+        if let volumeStr = data["volume"], let vol = Int(volumeStr) {
+            volume = vol
         }
     }
     
