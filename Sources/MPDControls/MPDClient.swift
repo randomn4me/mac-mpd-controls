@@ -1,6 +1,7 @@
 import Foundation
 import Network
 
+@MainActor
 public class MPDClient: ObservableObject {
     @Published public var connectionStatus: ConnectionStatus = .disconnected
     @Published public var currentSong: Song?
@@ -39,7 +40,7 @@ public class MPDClient: ObservableObject {
     
     public struct PlaybackOptions: Equatable {
         public var random: Bool = false
-        public var repeat: Bool = false
+        public var `repeat`: Bool = false
         public var single: SingleMode = .off
         public var consume: ConsumeMode = .off
         
@@ -281,6 +282,50 @@ public class MPDClient: ObservableObject {
         }
     }
     
+    public func toggleRandom() {
+        let newValue = !playbackOptions.random
+        sendCommand("random \(newValue ? 1 : 0)") { [weak self] _ in
+            self?.updateStatus()
+        }
+    }
+    
+    public func toggleRepeat() {
+        let newValue = !playbackOptions.`repeat`
+        sendCommand("repeat \(newValue ? 1 : 0)") { [weak self] _ in
+            self?.updateStatus()
+        }
+    }
+    
+    public func toggleSingle() {
+        let newMode: PlaybackOptions.SingleMode
+        switch playbackOptions.single {
+        case .off:
+            newMode = .on
+        case .on:
+            newMode = .oneshot
+        case .oneshot:
+            newMode = .off
+        }
+        sendCommand("single \(newMode.rawValue)") { [weak self] _ in
+            self?.updateStatus()
+        }
+    }
+    
+    public func toggleConsume() {
+        let newMode: PlaybackOptions.ConsumeMode
+        switch playbackOptions.consume {
+        case .off:
+            newMode = .on
+        case .on:
+            newMode = .off
+        case .oneshot:
+            newMode = .off
+        }
+        sendCommand("consume \(newMode.rawValue)") { [weak self] _ in
+            self?.updateStatus()
+        }
+    }
+    
     public func setRandom(_ enabled: Bool) {
         sendCommand("random \(enabled ? 1 : 0)") { [weak self] _ in
             self?.updateStatus()
@@ -322,7 +367,7 @@ public class MPDClient: ObservableObject {
         }
         
         playbackOptions.random = data["random"] == "1"
-        playbackOptions.repeat = data["repeat"] == "1"
+        playbackOptions.`repeat` = data["repeat"] == "1"
         
         if let single = data["single"] {
             switch single {
