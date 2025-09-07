@@ -69,10 +69,13 @@ class AppState: ObservableObject {
     }
     
     private func startUpdateTimer() {
-        updateTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { _ in
+        updateTimer = Timer.scheduledTimer(withTimeInterval: settings.updateInterval, repeats: true) { _ in
             if self.mpdClient.connectionStatus == .connected {
                 self.mpdClient.updateStatus()
                 self.mpdClient.updateCurrentSong()
+            } else if self.mpdClient.connectionStatus == .disconnected {
+                // Auto-reconnect
+                self.mpdClient.connect()
             }
         }
     }
