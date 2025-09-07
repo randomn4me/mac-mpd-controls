@@ -127,7 +127,7 @@ struct NowPlayingView: View {
                 if let album = song.album {
                     Text(album)
                         .font(.system(size: 11))
-                        .foregroundColor(.tertiary)
+                        .foregroundColor(.secondary)
                         .lineLimit(1)
                 }
             } else {
@@ -209,10 +209,10 @@ struct PlaybackOptionsView: View {
             Button(action: toggleRepeat) {
                 Image(systemName: "repeat")
                     .font(.system(size: 14))
-                    .foregroundColor(appState.mpdClient.playbackOptions.repeat ? .accentColor : .secondary)
+                    .foregroundColor(appState.mpdClient.playbackOptions.`repeat` ? .accentColor : .secondary)
             }
             .buttonStyle(.borderless)
-            .help("Repeat: \(appState.mpdClient.playbackOptions.repeat ? "On" : "Off")")
+            .help("Repeat: \(appState.mpdClient.playbackOptions.`repeat` ? "On" : "Off")")
             
             // Single
             Button(action: toggleSingle) {
@@ -247,37 +247,19 @@ struct PlaybackOptionsView: View {
     }
     
     private func toggleRandom() {
-        appState.mpdClient.setRandom(!appState.mpdClient.playbackOptions.random)
+        appState.mpdClient.toggleRandom()
     }
     
     private func toggleRepeat() {
-        appState.mpdClient.setRepeat(!appState.mpdClient.playbackOptions.repeat)
+        appState.mpdClient.toggleRepeat()
     }
     
     private func toggleSingle() {
-        let nextMode: MPDClient.PlaybackOptions.SingleMode
-        switch appState.mpdClient.playbackOptions.single {
-        case .off:
-            nextMode = .on
-        case .on:
-            nextMode = .oneshot
-        case .oneshot:
-            nextMode = .off
-        }
-        appState.mpdClient.setSingle(nextMode)
+        appState.mpdClient.toggleSingle()
     }
     
     private func toggleConsume() {
-        let nextMode: MPDClient.PlaybackOptions.ConsumeMode
-        switch appState.mpdClient.playbackOptions.consume {
-        case .off:
-            nextMode = .on
-        case .on:
-            nextMode = .off
-        case .oneshot:
-            nextMode = .off
-        }
-        appState.mpdClient.setConsume(nextMode)
+        appState.mpdClient.toggleConsume()
     }
     
     private var singleColor: Color {
