@@ -31,6 +31,12 @@ struct MenuBarView: View {
                     .padding()
                 
                 Divider()
+                
+                // Volume Control
+                VolumeControlView(appState: appState)
+                    .padding()
+                
+                Divider()
             }
             
             // Bottom Actions
@@ -299,6 +305,54 @@ struct PlaybackOptionsView: View {
             return "On"
         case .oneshot:
             return "One Shot"
+        }
+    }
+}
+
+struct VolumeControlView: View {
+    @ObservedObject var appState: AppState
+    @State private var tempVolume: Double = 0
+    @State private var isAdjusting = false
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: volumeIcon)
+                .font(.system(size: 14))
+                .frame(width: 20)
+            
+            Slider(
+                value: isAdjusting ? $tempVolume : .constant(Double(appState.mpdClient.volume)),
+                in: 0...100,
+                step: 1
+            ) { _ in
+                // onEditingChanged
+                isAdjusting = true
+                tempVolume = Double(appState.mpdClient.volume)
+            }
+            .onChange(of: tempVolume) { newValue in
+                if isAdjusting {
+                    appState.mpdClient.setVolume(Int(newValue))
+                }
+            }
+            .onAppear {
+                tempVolume = Double(appState.mpdClient.volume)
+            }
+            
+            Text("\(appState.mpdClient.volume)%")
+                .font(.system(size: 11))
+                .frame(width: 35, alignment: .trailing)
+        }
+    }
+    
+    private var volumeIcon: String {
+        if appState.mpdClient.volume == 0 {
+            return "speaker.slash.fill"
+        } else if appState.mpdClient.volume < 33 {
+            return "speaker.wave.1.fill"
+        } else if appState.mpdClient.volume < 66 {
+            return "speaker.wave.2.fill"
+        } else {
+            return "speaker.wave.3.fill"
         }
     }
 }
