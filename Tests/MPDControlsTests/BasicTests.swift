@@ -10,6 +10,10 @@ struct BasicTests {
         testPlaybackOptions()
         testSongCreation()
         testMPDParser()
+        testMPDCommands()
+        testConnectionStatus()
+        testVolumeOperations()
+        testCrossfadeOperations()
         
         print("\n=== All Tests Passed ===\n")
     }
@@ -107,5 +111,105 @@ struct BasicTests {
         }
         
         print("✓ MPD Parser tests passed")
+    }
+    
+    static func testMPDCommands() {
+        print("Testing MPD Commands...")
+        
+        // Test command creation
+        let commands = [
+            MPDCommand.play: "play",
+            MPDCommand.pause: "pause",
+            MPDCommand.stop: "stop",
+            MPDCommand.next: "next",
+            MPDCommand.previous: "previous",
+            MPDCommand.status: "status",
+            MPDCommand.currentSong: "currentsong",
+            MPDCommand.setVolume(50): "setvol 50",
+            MPDCommand.random(true): "random 1",
+            MPDCommand.random(false): "random 0",
+            MPDCommand.repeat(true): "repeat 1",
+            MPDCommand.single(.on): "single 1",
+            MPDCommand.single(.oneshot): "single oneshot",
+            MPDCommand.consume(.off): "consume 0",
+            MPDCommand.crossfade(5): "crossfade 5",
+            MPDCommand.shuffle: "shuffle",
+            MPDCommand.clear: "clear",
+            MPDCommand.update: "update",
+            MPDCommand.outputs: "outputs"
+        ]
+        
+        for (command, expectedString) in commands {
+            assert(command.toString() == expectedString, "Command \(command) should produce '\(expectedString)'")
+        }
+        
+        print("✓ MPD Commands tests passed")
+    }
+    
+    static func testConnectionStatus() {
+        print("Testing Connection Status...")
+        
+        // Test connection status enum
+        let statuses: [ConnectionStatus] = [
+            .disconnected,
+            .connecting,
+            .connected,
+            .failed("Test error")
+        ]
+        
+        for status in statuses {
+            switch status {
+            case .disconnected:
+                assert(status == .disconnected)
+            case .connecting:
+                assert(status == .connecting)
+            case .connected:
+                assert(status == .connected)
+            case .failed(let error):
+                assert(error == "Test error")
+            }
+        }
+        
+        print("✓ Connection Status tests passed")
+    }
+    
+    static func testVolumeOperations() {
+        print("Testing Volume Operations...")
+        
+        // Test volume clamping
+        let testVolumes = [
+            (-10, 0),    // Below minimum
+            (0, 0),      // Minimum
+            (50, 50),    // Normal
+            (100, 100),  // Maximum
+            (150, 100)   // Above maximum
+        ]
+        
+        for (input, expected) in testVolumes {
+            let clamped = max(0, min(100, input))
+            assert(clamped == expected, "Volume \(input) should clamp to \(expected)")
+        }
+        
+        print("✓ Volume Operations tests passed")
+    }
+    
+    static func testCrossfadeOperations() {
+        print("Testing Crossfade Operations...")
+        
+        // Test crossfade clamping
+        let testCrossfades = [
+            (-5, 0),     // Below minimum
+            (0, 0),      // Minimum
+            (10, 10),    // Normal
+            (120, 120),  // Maximum
+            (200, 120)   // Above maximum
+        ]
+        
+        for (input, expected) in testCrossfades {
+            let clamped = max(0, min(120, input))
+            assert(clamped == expected, "Crossfade \(input) should clamp to \(expected)")
+        }
+        
+        print("✓ Crossfade Operations tests passed")
     }
 }

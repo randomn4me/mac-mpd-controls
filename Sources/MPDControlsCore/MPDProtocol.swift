@@ -36,6 +36,86 @@ public struct MPDResponse {
     }
 }
 
+public enum MPDCommand {
+    case play
+    case pause
+    case stop
+    case next
+    case previous
+    case status
+    case currentSong
+    case setVolume(Int)
+    case random(Bool)
+    case `repeat`(Bool)
+    case single(PlaybackOptions.SingleMode)
+    case consume(PlaybackOptions.ConsumeMode)
+    case crossfade(Int)
+    case shuffle
+    case clear
+    case update
+    case outputs
+    case search(type: String, query: String)
+    case add(String)
+    case playId(Int)
+    case enableOutput(Int)
+    case disableOutput(Int)
+    case load(String)
+    case save(String)
+    
+    public func toString() -> String {
+        switch self {
+        case .play:
+            return "play"
+        case .pause:
+            return "pause"
+        case .stop:
+            return "stop"
+        case .next:
+            return "next"
+        case .previous:
+            return "previous"
+        case .status:
+            return "status"
+        case .currentSong:
+            return "currentsong"
+        case .setVolume(let volume):
+            return "setvol \(volume)"
+        case .random(let enabled):
+            return "random \(enabled ? 1 : 0)"
+        case .repeat(let enabled):
+            return "repeat \(enabled ? 1 : 0)"
+        case .single(let mode):
+            return "single \(mode.rawValue)"
+        case .consume(let mode):
+            return "consume \(mode.rawValue)"
+        case .crossfade(let seconds):
+            return "crossfade \(seconds)"
+        case .shuffle:
+            return "shuffle"
+        case .clear:
+            return "clear"
+        case .update:
+            return "update"
+        case .outputs:
+            return "outputs"
+        case .search(let type, let query):
+            return "search \(type) \"\(query)\""
+        case .add(let uri):
+            return "add \"\(uri)\""
+        case .playId(let id):
+            return "playid \(id)"
+        case .enableOutput(let id):
+            return "enableoutput \(id)"
+        case .disableOutput(let id):
+            return "disableoutput \(id)"
+        case .load(let playlist):
+            return "load \"\(playlist)\""
+        case .save(let playlist):
+            return "save \"\(playlist)\""
+        }
+    }
+}
+
 public class MPDParser {
     public static func parse(_ response: String) -> Result<MPDResponse, MPDError> {
         var fields: [String: String] = [:]
