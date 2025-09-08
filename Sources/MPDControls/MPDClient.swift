@@ -1,5 +1,5 @@
 import Foundation
-import Network
+import MPDControlsCore
 
 @MainActor
 public final class MPDClient: ObservableObject {
@@ -9,7 +9,7 @@ public final class MPDClient: ObservableObject {
     @Published public var playbackOptions: PlaybackOptions = PlaybackOptions()
     @Published public var volume: Int = 0
     
-    private var connection: NWConnection?
+    private var connection: NetworkConnectionProtocol?
     private let host: String
     private let port: UInt16
     private var commandQueue: [MPDCommand] = []
@@ -83,10 +83,7 @@ public final class MPDClient: ObservableObject {
         
         connectionStatus = .connecting
         
-        let endpoint = NWEndpoint.Host(host)
-        let portEndpoint = NWEndpoint.Port(rawValue: port)!
-        
-        connection = NWConnection(host: endpoint, port: portEndpoint, using: .tcp)
+        connection = createNetworkConnection()
         
         connection?.stateUpdateHandler = { [weak self] state in
             Task { @MainActor in
@@ -94,11 +91,11 @@ public final class MPDClient: ObservableObject {
             }
         }
         
-        connection?.start(queue: .global(qos: .userInitiated))
+        connection?.connect(host: host, port: port)
     }
     
     public func disconnect() {
-        connection?.cancel()
+        connection?.disconnect()
         connection = nil
         commandQueue.removeAll()
         isProcessingCommand = false
@@ -108,7 +105,7 @@ public final class MPDClient: ObservableObject {
         }
     }
     
-    private func handleConnectionStateChange(_ state: NWConnection.State) {
+    private func handleConnectionStateChange(_ state: ConnectionState) {
         DispatchQueue.main.async { [weak self] in
             switch state {
             case .ready:
@@ -118,7 +115,7 @@ public final class MPDClient: ObservableObject {
                 self?.updateCurrentSong()
             case .failed(let error):
                 self?.connectionStatus = .failed(error.localizedDescription)
-                self?.connection?.cancel()
+                self?.connection?.disconnect()
                 self?.connection = nil
             case .cancelled:
                 self?.connectionStatus = .disconnected
@@ -132,13 +129,10 @@ public final class MPDClient: ObservableObject {
     }
     
     private func startReceiving() {
-        connection?.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] data, _, isComplete, error in
+        connection?.receive { [weak self] data, error in
             DispatchQueue.main.async {
                 if let data = data, !data.isEmpty {
                     self?.handleReceivedData(data)
-                }
-                
-                if error == nil && !isComplete {
                     self?.startReceiving()
                 } else if let error = error {
                     self?.connectionStatus = .failed("Receive error: \(error.localizedDescription)")
@@ -217,7 +211,7 @@ public final class MPDClient: ObservableObject {
         let command = commandQueue.first!
         
         let data = (command.command + "\n").data(using: .utf8)!
-        connection?.send(content: data, completion: .contentProcessed { [weak self] error in
+        connection?.send(data: data) { [weak self] error in
             if let error = error {
                 Task { @MainActor in
                     self?.commandQueue.removeFirst()
@@ -226,7 +220,7 @@ public final class MPDClient: ObservableObject {
                     self?.processNextCommand()
                 }
             }
-        })
+        }
     }
     
     // MARK: - Public Commands
