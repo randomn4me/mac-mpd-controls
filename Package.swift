@@ -31,6 +31,10 @@ let package = Package(
             name: "MPDControlsCLI",
             targets: ["MPDControlsCLI"]
         ),
+        .executable(
+            name: "MPDControlsTests",
+            targets: ["MPDControlsTests"]
+        ),
         .library(
             name: "MPDControlsCore",
             targets: ["MPDControlsCore"]
@@ -46,9 +50,10 @@ let package = Package(
             name: "MPDControlsCLI",
             dependencies: ["MPDControlsCore"]
         ),
-        .testTarget(
+        .executableTarget(
             name: "MPDControlsTests",
-            dependencies: ["MPDControlsCore"]
+            dependencies: ["MPDControlsCore"],
+            path: "Tests/MPDControlsTests"
         )
     ]
 )
