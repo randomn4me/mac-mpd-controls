@@ -37,6 +37,39 @@ The project is structured as a Swift Package with multiple targets:
 - **MPDControls**: macOS-specific application with menu bar UI and media key handling
 - **MPDControlsCLI**: Command-line interface for MPD control
 
+## Installation
+
+### macOS
+
+For macOS users, use the provided installation script:
+
+```bash
+# Install MPD Controls with LaunchAgent for auto-start
+./install.sh
+
+# To uninstall
+./uninstall.sh
+```
+
+The installer will:
+- Build the application
+- Install the binary to `/usr/local/bin/MPDControls`
+- Set up a LaunchAgent for automatic startup on login
+- Start the application immediately
+
+### Manual Installation
+
+```bash
+# Build the release version
+swift build -c release --product MPDControls
+
+# Copy to your preferred location
+cp .build/release/MPDControls /usr/local/bin/
+
+# Run the application
+/usr/local/bin/MPDControls
+```
+
 ## Development
 
 ### Prerequisites
@@ -90,9 +123,19 @@ These can be configured through the Settings interface in the menu bar applicati
 ## Testing
 
 The project includes comprehensive test coverage:
-- Unit tests for MPD protocol parsing
-- Integration tests for client functionality
-- Cross-platform compatibility tests
+- **Unit Tests**: MPD protocol parsing, command generation, types validation
+- **Integration Tests**: Client functionality, connection management, error handling
+- **End-to-End Tests**: Complete user workflows, playback scenarios, media key simulation
+- **Cross-Platform Tests**: Linux and macOS compatibility verification
+
+Run the test suite:
+```bash
+# Using Nix environment
+nix develop -c make test
+
+# Or directly with Swift
+swift test
+```
 
 ## Origin
 
