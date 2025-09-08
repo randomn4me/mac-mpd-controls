@@ -37,6 +37,12 @@ struct MenuBarView: View {
                     .padding()
                 
                 Divider()
+                
+                // Crossfade Control
+                CrossfadeControlView(appState: appState)
+                    .padding()
+                
+                Divider()
             }
             
             // Bottom Actions
@@ -353,6 +359,45 @@ struct VolumeControlView: View {
             return "speaker.wave.2.fill"
         } else {
             return "speaker.wave.3.fill"
+        }
+    }
+}
+
+struct CrossfadeControlView: View {
+    @ObservedObject var appState: AppState
+    @State private var tempCrossfade: Double = 0
+    @State private var isAdjusting = false
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "arrow.triangle.merge")
+                .font(.system(size: 14))
+                .frame(width: 20)
+            
+            Text("Crossfade")
+                .font(.system(size: 12))
+            
+            Slider(
+                value: isAdjusting ? $tempCrossfade : .constant(Double(appState.mpdClient.crossfade)),
+                in: 0...30,
+                step: 1
+            ) { _ in
+                // onEditingChanged
+                isAdjusting = true
+                tempCrossfade = Double(appState.mpdClient.crossfade)
+            }
+            .onChange(of: tempCrossfade) { newValue in
+                if isAdjusting {
+                    appState.mpdClient.setCrossfade(Int(newValue))
+                }
+            }
+            .onAppear {
+                tempCrossfade = Double(appState.mpdClient.crossfade)
+            }
+            
+            Text("\(appState.mpdClient.crossfade)s")
+                .font(.system(size: 11, weight: .medium))
+                .frame(width: 30, alignment: .trailing)
         }
     }
 }
