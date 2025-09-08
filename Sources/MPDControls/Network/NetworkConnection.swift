@@ -186,15 +186,17 @@ class FoundationNetworkConnection: NetworkConnectionProtocol {
     }
 }
 
-// Factory function to create appropriate connection
-func createNetworkConnection() -> NetworkConnectionProtocol {
-    #if canImport(Network)
-    if #available(macOS 10.14, *) {
-        return AppleNetworkConnection()
-    } else {
+// Factory for creating appropriate network connection
+enum NetworkConnectionFactory {
+    static func create() -> NetworkConnectionProtocol {
+        #if canImport(Network)
+        if #available(macOS 10.14, *) {
+            return AppleNetworkConnection()
+        } else {
+            return FoundationNetworkConnection()
+        }
+        #else
         return FoundationNetworkConnection()
+        #endif
     }
-    #else
-    return FoundationNetworkConnection()
-    #endif
 }

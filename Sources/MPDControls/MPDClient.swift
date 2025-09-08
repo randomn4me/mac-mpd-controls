@@ -89,7 +89,7 @@ public final class MPDClient: ObservableObject {
         
         connectionStatus = .connecting
         
-        connection = createNetworkConnection()
+        connection = NetworkConnectionFactory.create()
         
         connection?.stateUpdateHandler = { [weak self] state in
             Task { @MainActor in
