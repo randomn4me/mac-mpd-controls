@@ -12,7 +12,7 @@ struct TestRunner {
         MPDClientTests.run()
         NetworkConnectionTests.run()
         EndToEndTests.run()
-        IntegrationTests.run()
+        IntegrationTests.runAll()
         
         print("\n✅ All test suites completed successfully!")
     }

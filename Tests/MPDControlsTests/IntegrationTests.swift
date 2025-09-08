@@ -9,6 +9,9 @@ public struct IntegrationTests {
         testMPDTypes()
         testPlaybackOptions()
         testSimpleMPDClient()
+        testQueueOperations()
+        testSearchOperations()
+        testDatabaseOperations()
         
         print("\n=== All Integration Tests Passed ===\n")
     }
@@ -85,10 +88,8 @@ public struct IntegrationTests {
     static func testSimpleMPDClient() {
         print("Testing Simple MPD Client...")
         
-        let client = SimpleMPDClient(host: "localhost", port: 6600)
-        // Note: host and port are private, so we can't test them directly
-        // But we can verify the client was created
-        assert(client != nil)
+        let _ = SimpleMPDClient(host: "localhost", port: 6600)
+        // Client created successfully
         
         // Test command formatting
         let playCommand = MPDCommand.play.toString()
@@ -98,6 +99,66 @@ public struct IntegrationTests {
         assert(volumeCommand == "setvol 75")
         
         print("✓ Simple MPD Client tests passed")
+    }
+    
+    static func testQueueOperations() {
+        print("Testing Queue Operations...")
+        
+        // Test queue-related commands
+        let clearCommand = MPDCommand.clear.toString()
+        assert(clearCommand == "clear")
+        
+        let addCommand = MPDCommand.add("test.mp3").toString()
+        assert(addCommand == "add \"test.mp3\"")
+        
+        let playIdCommand = MPDCommand.playId(5).toString()
+        assert(playIdCommand == "playid 5")
+        
+        let deleteCommand = MPDCommand.delete(3).toString()
+        assert(deleteCommand == "delete 3")
+        
+        let shuffleCommand = MPDCommand.shuffle.toString()
+        assert(shuffleCommand == "shuffle")
+        
+        print("✓ Queue Operations tests passed")
+    }
+    
+    static func testSearchOperations() {
+        print("Testing Search Operations...")
+        
+        // Test search command formatting
+        let searchArtistCommand = MPDCommand.search("artist", "Test Artist").toString()
+        assert(searchArtistCommand == "search artist \"Test Artist\"")
+        
+        let searchAlbumCommand = MPDCommand.search("album", "Test Album").toString()
+        assert(searchAlbumCommand == "search album \"Test Album\"")
+        
+        let searchTitleCommand = MPDCommand.search("title", "Test Song").toString()
+        assert(searchTitleCommand == "search title \"Test Song\"")
+        
+        let searchAnyCommand = MPDCommand.search("any", "Test").toString()
+        assert(searchAnyCommand == "search any \"Test\"")
+        
+        print("✓ Search Operations tests passed")
+    }
+    
+    static func testDatabaseOperations() {
+        print("Testing Database Operations...")
+        
+        // Test database update commands
+        let updateCommand = MPDCommand.update(nil).toString()
+        assert(updateCommand == "update")
+        
+        let updatePathCommand = MPDCommand.update("/music/new").toString()
+        assert(updatePathCommand == "update \"/music/new\"")
+        
+        let rescanCommand = MPDCommand.rescan(nil).toString()
+        assert(rescanCommand == "rescan")
+        
+        let rescanPathCommand = MPDCommand.rescan("/music/updated").toString()
+        assert(rescanPathCommand == "rescan \"/music/updated\"")
+        
+        print("✓ Database Operations tests passed")
     }
 }
 

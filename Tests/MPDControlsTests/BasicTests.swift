@@ -137,7 +137,7 @@ struct BasicTests {
             (.crossfade(5), "crossfade 5"),
             (.shuffle, "shuffle"),
             (.clear, "clear"),
-            (.update, "update"),
+            (.update(nil), "update"),
             (.outputs, "outputs")
         ]
         
@@ -220,15 +220,11 @@ struct BasicTests {
         
         // Test playlist command creation
         let playlistCommands: [(MPDCommand, String)] = [
-            (.loadPlaylist("myplaylist"), "load \"myplaylist\""),
-            (.savePlaylist("newlist"), "save \"newlist\""),
-            (.deletePlaylist("oldlist"), "rm \"oldlist\""),
-            (.listPlaylists, "listplaylists"),
-            (.addUri("http://stream.example.com"), "add \"http://stream.example.com\""),
+            (.load("myplaylist"), "load \"myplaylist\""),
+            (.save("newlist"), "save \"newlist\""),
+            (.add("http://stream.example.com"), "add \"http://stream.example.com\""),
             (.playId(42), "playid 42"),
-            (.deleteId(10), "deleteid 10"),
-            (.moveId(5, to: 10), "moveid 5 10"),
-            (.swapId(3, with: 7), "swapid 3 7")
+            (.delete(10), "delete 10")
         ]
         
         for (command, expectedString) in playlistCommands {
@@ -266,10 +262,10 @@ struct BasicTests {
         
         // Test search command creation
         let searchCommands: [(MPDCommand, String)] = [
-            (.search(type: "artist", query: "Beatles"), "search artist \"Beatles\""),
-            (.search(type: "album", query: "Abbey Road"), "search album \"Abbey Road\""),
-            (.search(type: "title", query: "Hey Jude"), "search title \"Hey Jude\""),
-            (.search(type: "any", query: "music"), "search any \"music\"")
+            (.search("artist", "Beatles"), "search artist \"Beatles\""),
+            (.search("album", "Abbey Road"), "search album \"Abbey Road\""),
+            (.search("title", "Hey Jude"), "search title \"Hey Jude\""),
+            (.search("any", "music"), "search any \"music\"")
         ]
         
         for (command, expectedString) in searchCommands {

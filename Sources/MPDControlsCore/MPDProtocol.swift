@@ -52,11 +52,13 @@ public enum MPDCommand {
     case crossfade(Int)
     case shuffle
     case clear
-    case update
+    case update(String?)
+    case rescan(String?)
     case outputs
-    case search(type: String, query: String)
+    case search(String, String)
     case add(String)
     case playId(Int)
+    case delete(Int)
     case enableOutput(Int)
     case disableOutput(Int)
     case load(String)
@@ -94,8 +96,18 @@ public enum MPDCommand {
             return "shuffle"
         case .clear:
             return "clear"
-        case .update:
-            return "update"
+        case .update(let path):
+            if let path = path {
+                return "update \"\(path)\""
+            } else {
+                return "update"
+            }
+        case .rescan(let path):
+            if let path = path {
+                return "rescan \"\(path)\""
+            } else {
+                return "rescan"
+            }
         case .outputs:
             return "outputs"
         case .search(let type, let query):
@@ -104,6 +116,8 @@ public enum MPDCommand {
             return "add \"\(uri)\""
         case .playId(let id):
             return "playid \(id)"
+        case .delete(let position):
+            return "delete \(position)"
         case .enableOutput(let id):
             return "enableoutput \(id)"
         case .disableOutput(let id):
