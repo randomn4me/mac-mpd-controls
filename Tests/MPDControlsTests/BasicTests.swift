@@ -117,26 +117,26 @@ struct BasicTests {
         print("Testing MPD Commands...")
         
         // Test command creation
-        let commands = [
-            MPDCommand.play: "play",
-            MPDCommand.pause: "pause",
-            MPDCommand.stop: "stop",
-            MPDCommand.next: "next",
-            MPDCommand.previous: "previous",
-            MPDCommand.status: "status",
-            MPDCommand.currentSong: "currentsong",
-            MPDCommand.setVolume(50): "setvol 50",
-            MPDCommand.random(true): "random 1",
-            MPDCommand.random(false): "random 0",
-            MPDCommand.repeat(true): "repeat 1",
-            MPDCommand.single(.on): "single 1",
-            MPDCommand.single(.oneshot): "single oneshot",
-            MPDCommand.consume(.off): "consume 0",
-            MPDCommand.crossfade(5): "crossfade 5",
-            MPDCommand.shuffle: "shuffle",
-            MPDCommand.clear: "clear",
-            MPDCommand.update: "update",
-            MPDCommand.outputs: "outputs"
+        let commands: [(MPDCommand, String)] = [
+            (.play, "play"),
+            (.pause, "pause"),
+            (.stop, "stop"),
+            (.next, "next"),
+            (.previous, "previous"),
+            (.status, "status"),
+            (.currentSong, "currentsong"),
+            (.setVolume(50), "setvol 50"),
+            (.random(true), "random 1"),
+            (.random(false), "random 0"),
+            (.repeat(true), "repeat 1"),
+            (.single(.on), "single 1"),
+            (.single(.oneshot), "single oneshot"),
+            (.consume(.off), "consume 0"),
+            (.crossfade(5), "crossfade 5"),
+            (.shuffle, "shuffle"),
+            (.clear, "clear"),
+            (.update, "update"),
+            (.outputs, "outputs")
         ]
         
         for (command, expectedString) in commands {
