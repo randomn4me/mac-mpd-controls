@@ -545,6 +545,155 @@ public final class MPDClient: ObservableObject {
         sendCommand("toggleoutput \(id)") { _ in }
     }
     
+    // MARK: - Queue Management
+    
+    public struct QueueItem: Identifiable {
+        public let id: Int
+        public let position: Int
+        public let file: String
+        public let artist: String?
+        public let title: String?
+        public let album: String?
+        public let duration: TimeInterval?
+    }
+    
+    public func getQueue(completion: @escaping ([QueueItem]) -> Void) {
+        sendCommand("playlistinfo") { result in
+            switch result {
+            case .success(let data):
+                var items: [QueueItem] = []
+                var currentId: Int?
+                var currentPos: Int?
+                var currentFile: String?
+                var currentArtist: String?
+                var currentTitle: String?
+                var currentAlbum: String?
+                var currentDuration: TimeInterval?
+                
+                for (key, value) in data.sorted(by: { $0.key < $1.key }) {
+                    switch key {
+                    case "file":
+                        if let id = currentId, let pos = currentPos, let file = currentFile {
+                            items.append(QueueItem(
+                                id: id,
+                                position: pos,
+                                file: file,
+                                artist: currentArtist,
+                                title: currentTitle,
+                                album: currentAlbum,
+                                duration: currentDuration
+                            ))
+                        }
+                        currentFile = value
+                        currentArtist = nil
+                        currentTitle = nil
+                        currentAlbum = nil
+                        currentDuration = nil
+                    case "Id":
+                        currentId = Int(value)
+                    case "Pos":
+                        currentPos = Int(value)
+                    case "Artist":
+                        currentArtist = value
+                    case "Title":
+                        currentTitle = value
+                    case "Album":
+                        currentAlbum = value
+                    case "Time":
+                        currentDuration = TimeInterval(value)
+                    default:
+                        break
+                    }
+                }
+                
+                if let id = currentId, let pos = currentPos, let file = currentFile {
+                    items.append(QueueItem(
+                        id: id,
+                        position: pos,
+                        file: file,
+                        artist: currentArtist,
+                        title: currentTitle,
+                        album: currentAlbum,
+                        duration: currentDuration
+                    ))
+                }
+                
+                completion(items)
+            case .failure:
+                completion([])
+            }
+        }
+    }
+    
+    public func deleteFromQueue(position: Int) {
+        sendCommand("delete \(position)") { [weak self] _ in
+            Task { @MainActor in
+                self?.updateStatus()
+            }
+        }
+    }
+    
+    public func deleteFromQueue(id: Int) {
+        sendCommand("deleteid \(id)") { [weak self] _ in
+            Task { @MainActor in
+                self?.updateStatus()
+            }
+        }
+    }
+    
+    public func moveInQueue(from: Int, to: Int) {
+        sendCommand("move \(from) \(to)") { [weak self] _ in
+            Task { @MainActor in
+                self?.updateStatus()
+            }
+        }
+    }
+    
+    public func moveInQueue(id: Int, to: Int) {
+        sendCommand("moveid \(id) \(to)") { [weak self] _ in
+            Task { @MainActor in
+                self?.updateStatus()
+            }
+        }
+    }
+    
+    public func swapInQueue(pos1: Int, pos2: Int) {
+        sendCommand("swap \(pos1) \(pos2)") { [weak self] _ in
+            Task { @MainActor in
+                self?.updateStatus()
+            }
+        }
+    }
+    
+    public func swapInQueue(id1: Int, id2: Int) {
+        sendCommand("swapid \(id1) \(id2)") { [weak self] _ in
+            Task { @MainActor in
+                self?.updateStatus()
+            }
+        }
+    }
+    
+    public func addAndPlay(_ uri: String) {
+        sendCommand("add \"\(uri)\"") { [weak self] _ in
+            self?.sendCommand("play") { _ in
+                Task { @MainActor in
+                    self?.updateStatus()
+                    self?.updateCurrentSong()
+                }
+            }
+        }
+    }
+    
+    public func insertAndPlay(_ uri: String, at position: Int) {
+        sendCommand("addid \"\(uri)\" \(position)") { [weak self] result in
+            if case .success(let data) = result,
+               let idStr = data["Id"],
+               let id = Int(idStr) {
+                self?.playId(id)
+            }
+        }
+    }
+    
     // MARK: - Search
     
     public struct SearchResult {
@@ -627,6 +776,93 @@ public final class MPDClient: ObservableObject {
     
     public func searchAny(_ query: String, completion: @escaping ([SearchResult]) -> Void) {
         search(type: "any", query: query, completion: completion)
+    }
+    
+    // MARK: - Statistics
+    
+    public struct MPDStats {
+        public let artists: Int
+        public let albums: Int
+        public let songs: Int
+        public let uptime: TimeInterval
+        public let playtime: TimeInterval
+        public let dbPlaytime: TimeInterval
+        public let dbUpdate: Date?
+    }
+    
+    public func getStats(completion: @escaping (MPDStats?) -> Void) {
+        sendCommand("stats") { result in
+            switch result {
+            case .success(let data):
+                guard let artists = data["artists"].flatMap(Int.init),
+                      let albums = data["albums"].flatMap(Int.init),
+                      let songs = data["songs"].flatMap(Int.init),
+                      let uptime = data["uptime"].flatMap(TimeInterval.init),
+                      let playtime = data["playtime"].flatMap(TimeInterval.init),
+                      let dbPlaytime = data["db_playtime"].flatMap(TimeInterval.init) else {
+                    completion(nil)
+                    return
+                }
+                
+                let dbUpdate = data["db_update"].flatMap(TimeInterval.init).map(Date.init(timeIntervalSince1970:))
+                
+                let stats = MPDStats(
+                    artists: artists,
+                    albums: albums,
+                    songs: songs,
+                    uptime: uptime,
+                    playtime: playtime,
+                    dbPlaytime: dbPlaytime,
+                    dbUpdate: dbUpdate
+                )
+                completion(stats)
+            case .failure:
+                completion(nil)
+            }
+        }
+    }
+    
+    // MARK: - Idle Command Support
+    
+    public enum IdleSubsystem: String, CaseIterable {
+        case database
+        case update
+        case storedPlaylist = "stored_playlist"
+        case playlist
+        case player
+        case mixer
+        case output
+        case options
+        case partition
+        case sticker
+        case subscription
+        case message
+    }
+    
+    public func idle(subsystems: [IdleSubsystem] = [], completion: @escaping ([IdleSubsystem]) -> Void) {
+        let command: String
+        if subsystems.isEmpty {
+            command = "idle"
+        } else {
+            let subsystemStrings = subsystems.map { $0.rawValue }.joined(separator: " ")
+            command = "idle \(subsystemStrings)"
+        }
+        
+        sendCommand(command) { result in
+            switch result {
+            case .success(let data):
+                let changedSubsystems = data.compactMap { key, _ in
+                    key == "changed" ? nil : IdleSubsystem(rawValue: key)
+                }
+                completion(changedSubsystems)
+            case .failure:
+                completion([])
+            }
+        }
+    }
+    
+    public func noIdle() {
+        sendCommand("noidle") { _ in }
     }
     
     // MARK: - Response Parsing
