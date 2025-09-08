@@ -16,6 +16,9 @@ public final class MPDClient: ObservableObject {
     private var commandQueue: [MPDCommand] = []
     private var isProcessingCommand = false
     private var receiveBuffer = ""
+    private var connectionRetryCount = 0
+    private let maxRetryCount = 3
+    private var reconnectTimer: Timer?
     
     public enum ConnectionStatus: Equatable {
         case disconnected
@@ -70,6 +73,8 @@ public final class MPDClient: ObservableObject {
     }
     
     deinit {
+        reconnectTimer?.invalidate()
+        reconnectTimer = nil
         connection?.cancel()
         connection = nil
         commandQueue.removeAll()
@@ -111,6 +116,7 @@ public final class MPDClient: ObservableObject {
             switch state {
             case .ready:
                 self?.connectionStatus = .connected
+                self?.connectionRetryCount = 0
                 self?.startReceiving()
                 self?.updateStatus()
                 self?.updateCurrentSong()
@@ -118,6 +124,7 @@ public final class MPDClient: ObservableObject {
                 self?.connectionStatus = .failed(error.localizedDescription)
                 self?.connection?.disconnect()
                 self?.connection = nil
+                self?.scheduleReconnectIfNeeded()
             case .cancelled:
                 self?.connectionStatus = .disconnected
                 self?.connection = nil
@@ -863,6 +870,32 @@ public final class MPDClient: ObservableObject {
     
     public func noIdle() {
         sendCommand("noidle") { _ in }
+    }
+    
+    // MARK: - Error Recovery
+    
+    private func scheduleReconnectIfNeeded() {
+        guard connectionRetryCount < maxRetryCount else {
+            print("Max reconnection attempts reached. Giving up.")
+            return
+        }
+        
+        connectionRetryCount += 1
+        let delay = TimeInterval(connectionRetryCount * 2) // Exponential backoff
+        
+        reconnectTimer?.invalidate()
+        reconnectTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
+            Task { @MainActor in
+                print("Attempting to reconnect (attempt \(self?.connectionRetryCount ?? 0)/\(self?.maxRetryCount ?? 0))...")
+                self?.connect()
+            }
+        }
+    }
+    
+    public func resetConnection() {
+        disconnect()
+        connectionRetryCount = 0
+        connect()
     }
     
     // MARK: - Response Parsing

@@ -82,8 +82,10 @@ class AppState: ObservableObject {
                     self.mpdClient.updateCurrentSong()
                     self.notificationManager?.checkForSongChange()
                 } else if self.mpdClient.connectionStatus == .disconnected {
-                    // Auto-reconnect
-                    self.mpdClient.connect()
+                    // Auto-reconnect if enabled
+                    if self.settings.autoReconnect {
+                        self.mpdClient.connect()
+                    }
                 }
             }
         }
