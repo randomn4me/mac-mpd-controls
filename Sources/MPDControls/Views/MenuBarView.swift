@@ -4,6 +4,7 @@ struct MenuBarView: View {
     @ObservedObject var appState: AppState
     @State private var showSettings = false
     @State private var showPlaylist = false
+    @State private var showSearch = false
     
     var body: some View {
         VStack(spacing: 0) {
@@ -45,9 +46,17 @@ struct MenuBarView: View {
                 
                 Divider()
                 
-                // Playlist Button
-                Button("Manage Queue...") {
-                    showPlaylist = true
+                // Playlist and Search Buttons
+                HStack {
+                    Button("Manage Queue...") {
+                        showPlaylist = true
+                    }
+                    
+                    Spacer()
+                    
+                    Button("Search...") {
+                        showSearch = true
+                    }
                 }
                 .padding(.horizontal)
                 .padding(.vertical, 8)
@@ -75,6 +84,9 @@ struct MenuBarView: View {
         }
         .sheet(isPresented: $showPlaylist) {
             PlaylistView(appState: appState)
+        }
+        .sheet(isPresented: $showSearch) {
+            SearchView(appState: appState)
         }
     }
 }

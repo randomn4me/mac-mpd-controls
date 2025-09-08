@@ -427,6 +427,17 @@ public final class MPDClient: ObservableObject {
         }
     }
     
+    public func addToQueueAndPlay(_ uri: String) {
+        sendCommand("add \"\(uri)\"") { [weak self] _ in
+            self?.sendCommand("play") { _ in
+                Task { @MainActor in
+                    self?.updateStatus()
+                    self?.updateCurrentSong()
+                }
+            }
+        }
+    }
+    
     public func playId(_ id: Int) {
         sendCommand("playid \(id)") { [weak self] _ in
             Task { @MainActor in
@@ -711,7 +722,7 @@ public final class MPDClient: ObservableObject {
         public let duration: TimeInterval?
     }
     
-    public func search(type: String, query: String, completion: @escaping ([SearchResult]) -> Void) {
+    public func search(type: String, query: String, completion: @escaping (Result<[SearchResult], Error>) -> Void) {
         sendCommand("search \(type) \"\(query)\"") { result in
             switch result {
             case .success(let data):
@@ -762,26 +773,26 @@ public final class MPDClient: ObservableObject {
                     ))
                 }
                 
-                completion(results)
-            case .failure:
-                completion([])
+                completion(.success(results))
+            case .failure(let error):
+                completion(.failure(error))
             }
         }
     }
     
-    public func searchArtist(_ query: String, completion: @escaping ([SearchResult]) -> Void) {
+    public func searchArtist(_ query: String, completion: @escaping (Result<[SearchResult], Error>) -> Void) {
         search(type: "artist", query: query, completion: completion)
     }
     
-    public func searchAlbum(_ query: String, completion: @escaping ([SearchResult]) -> Void) {
+    public func searchAlbum(_ query: String, completion: @escaping (Result<[SearchResult], Error>) -> Void) {
         search(type: "album", query: query, completion: completion)
     }
     
-    public func searchTitle(_ query: String, completion: @escaping ([SearchResult]) -> Void) {
+    public func searchTitle(_ query: String, completion: @escaping (Result<[SearchResult], Error>) -> Void) {
         search(type: "title", query: query, completion: completion)
     }
     
-    public func searchAny(_ query: String, completion: @escaping ([SearchResult]) -> Void) {
+    public func searchAny(_ query: String, completion: @escaping (Result<[SearchResult], Error>) -> Void) {
         search(type: "any", query: query, completion: completion)
     }
     
