@@ -415,12 +415,12 @@ public final class MPDClient: ObservableObject {
         }
     }
     
-    public func clear() {
+    public func clearQueue() {
         sendCommand("clear") { _ in }
     }
     
-    public func addUri(_ uri: String) {
-        sendCommand("add \(uri)") { [weak self] _ in
+    public func addToQueue(_ uri: String) {
+        sendCommand("add \"\(uri)\"") { [weak self] _ in
             Task { @MainActor in
                 self?.updateStatus()
             }
@@ -480,7 +480,7 @@ public final class MPDClient: ObservableObject {
         sendCommand("playlistadd \"\(name)\" \"\(uri)\"") { _ in }
     }
     
-    public func shuffle() {
+    public func shuffleQueue() {
         sendCommand("shuffle") { [weak self] _ in
             Task { @MainActor in
                 self?.updateStatus()
@@ -564,7 +564,7 @@ public final class MPDClient: ObservableObject {
         public let duration: TimeInterval?
     }
     
-    public func getQueue(completion: @escaping ([QueueItem]) -> Void) {
+    public func getQueue(completion: @escaping (Result<[QueueItem], Error>) -> Void) {
         sendCommand("playlistinfo") { result in
             switch result {
             case .success(let data):
@@ -625,9 +625,9 @@ public final class MPDClient: ObservableObject {
                     ))
                 }
                 
-                completion(items)
-            case .failure:
-                completion([])
+                completion(.success(items))
+            case .failure(let error):
+                completion(.failure(error))
             }
         }
     }

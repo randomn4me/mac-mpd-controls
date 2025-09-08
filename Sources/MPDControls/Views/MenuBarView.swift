@@ -3,6 +3,7 @@ import SwiftUI
 struct MenuBarView: View {
     @ObservedObject var appState: AppState
     @State private var showSettings = false
+    @State private var showPlaylist = false
     
     var body: some View {
         VStack(spacing: 0) {
@@ -43,6 +44,15 @@ struct MenuBarView: View {
                     .padding()
                 
                 Divider()
+                
+                // Playlist Button
+                Button("Manage Queue...") {
+                    showPlaylist = true
+                }
+                .padding(.horizontal)
+                .padding(.vertical, 8)
+                
+                Divider()
             }
             
             // Bottom Actions
@@ -62,6 +72,9 @@ struct MenuBarView: View {
         .frame(width: 320)
         .sheet(isPresented: $showSettings) {
             SettingsView(appState: appState)
+        }
+        .sheet(isPresented: $showPlaylist) {
+            PlaylistView(appState: appState)
         }
     }
 }
