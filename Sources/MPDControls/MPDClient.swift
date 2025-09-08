@@ -8,6 +8,7 @@ public final class MPDClient: ObservableObject {
     @Published public var playerState: PlayerState = .stopped
     @Published public var playbackOptions: PlaybackOptions = PlaybackOptions()
     @Published public var volume: Int = 0
+    @Published public var crossfade: Int = 0
     
     private var connection: NetworkConnectionProtocol?
     private let host: String
@@ -398,6 +399,15 @@ public final class MPDClient: ObservableObject {
         setVolume(volume - amount)
     }
     
+    public func setCrossfade(_ seconds: Int) {
+        let clampedSeconds = max(0, min(120, seconds))
+        sendCommand("crossfade \(clampedSeconds)") { [weak self] _ in
+            Task { @MainActor in
+                self?.updateStatus()
+            }
+        }
+    }
+    
     public func clear() {
         sendCommand("clear") { _ in }
     }
@@ -425,6 +435,198 @@ public final class MPDClient: ObservableObject {
                 self?.updateStatus()
             }
         }
+    }
+    
+    // MARK: - Playlist Management
+    
+    public func listPlaylists(completion: @escaping ([String]) -> Void) {
+        sendCommand("listplaylists") { result in
+            switch result {
+            case .success(let data):
+                let playlists = data.compactMap { key, value in
+                    key == "playlist" ? value : nil
+                }
+                completion(playlists)
+            case .failure:
+                completion([])
+            }
+        }
+    }
+    
+    public func loadPlaylist(_ name: String) {
+        sendCommand("load \"\(name)\"") { [weak self] _ in
+            Task { @MainActor in
+                self?.updateStatus()
+            }
+        }
+    }
+    
+    public func savePlaylist(_ name: String) {
+        sendCommand("save \"\(name)\"") { _ in }
+    }
+    
+    public func deletePlaylist(_ name: String) {
+        sendCommand("rm \"\(name)\"") { _ in }
+    }
+    
+    public func addToPlaylist(_ name: String, uri: String) {
+        sendCommand("playlistadd \"\(name)\" \"\(uri)\"") { _ in }
+    }
+    
+    public func shuffle() {
+        sendCommand("shuffle") { [weak self] _ in
+            Task { @MainActor in
+                self?.updateStatus()
+            }
+        }
+    }
+    
+    // MARK: - Database Operations
+    
+    public func updateDatabase(path: String? = nil) {
+        let command = path != nil ? "update \"\(path!)\"" : "update"
+        sendCommand(command) { _ in }
+    }
+    
+    public func rescanDatabase(path: String? = nil) {
+        let command = path != nil ? "rescan \"\(path!)\"" : "rescan"
+        sendCommand(command) { _ in }
+    }
+    
+    // MARK: - Output Control
+    
+    public func listOutputs(completion: @escaping ([(id: Int, name: String, enabled: Bool)]) -> Void) {
+        sendCommand("outputs") { result in
+            switch result {
+            case .success(let data):
+                var outputs: [(id: Int, name: String, enabled: Bool)] = []
+                var currentId: Int?
+                var currentName: String?
+                var currentEnabled: Bool?
+                
+                for (key, value) in data {
+                    switch key {
+                    case "outputid":
+                        if let id = currentId, let name = currentName, let enabled = currentEnabled {
+                            outputs.append((id: id, name: name, enabled: enabled))
+                        }
+                        currentId = Int(value)
+                        currentName = nil
+                        currentEnabled = nil
+                    case "outputname":
+                        currentName = value
+                    case "outputenabled":
+                        currentEnabled = value == "1"
+                    default:
+                        break
+                    }
+                }
+                
+                if let id = currentId, let name = currentName, let enabled = currentEnabled {
+                    outputs.append((id: id, name: name, enabled: enabled))
+                }
+                
+                completion(outputs)
+            case .failure:
+                completion([])
+            }
+        }
+    }
+    
+    public func enableOutput(_ id: Int) {
+        sendCommand("enableoutput \(id)") { _ in }
+    }
+    
+    public func disableOutput(_ id: Int) {
+        sendCommand("disableoutput \(id)") { _ in }
+    }
+    
+    public func toggleOutput(_ id: Int) {
+        sendCommand("toggleoutput \(id)") { _ in }
+    }
+    
+    // MARK: - Search
+    
+    public struct SearchResult {
+        public let file: String
+        public let artist: String?
+        public let title: String?
+        public let album: String?
+        public let duration: TimeInterval?
+    }
+    
+    public func search(type: String, query: String, completion: @escaping ([SearchResult]) -> Void) {
+        sendCommand("search \(type) \"\(query)\"") { result in
+            switch result {
+            case .success(let data):
+                var results: [SearchResult] = []
+                var currentFile: String?
+                var currentArtist: String?
+                var currentTitle: String?
+                var currentAlbum: String?
+                var currentDuration: TimeInterval?
+                
+                for (key, value) in data {
+                    switch key {
+                    case "file":
+                        if let file = currentFile {
+                            results.append(SearchResult(
+                                file: file,
+                                artist: currentArtist,
+                                title: currentTitle,
+                                album: currentAlbum,
+                                duration: currentDuration
+                            ))
+                        }
+                        currentFile = value
+                        currentArtist = nil
+                        currentTitle = nil
+                        currentAlbum = nil
+                        currentDuration = nil
+                    case "Artist":
+                        currentArtist = value
+                    case "Title":
+                        currentTitle = value
+                    case "Album":
+                        currentAlbum = value
+                    case "Time":
+                        currentDuration = TimeInterval(value)
+                    default:
+                        break
+                    }
+                }
+                
+                if let file = currentFile {
+                    results.append(SearchResult(
+                        file: file,
+                        artist: currentArtist,
+                        title: currentTitle,
+                        album: currentAlbum,
+                        duration: currentDuration
+                    ))
+                }
+                
+                completion(results)
+            case .failure:
+                completion([])
+            }
+        }
+    }
+    
+    public func searchArtist(_ query: String, completion: @escaping ([SearchResult]) -> Void) {
+        search(type: "artist", query: query, completion: completion)
+    }
+    
+    public func searchAlbum(_ query: String, completion: @escaping ([SearchResult]) -> Void) {
+        search(type: "album", query: query, completion: completion)
+    }
+    
+    public func searchTitle(_ query: String, completion: @escaping ([SearchResult]) -> Void) {
+        search(type: "title", query: query, completion: completion)
+    }
+    
+    public func searchAny(_ query: String, completion: @escaping ([SearchResult]) -> Void) {
+        search(type: "any", query: query, completion: completion)
     }
     
     // MARK: - Response Parsing
@@ -470,6 +672,10 @@ public final class MPDClient: ObservableObject {
         
         if let volumeStr = data["volume"], let vol = Int(volumeStr) {
             volume = vol
+        }
+        
+        if let crossfadeStr = data["xfade"], let xfade = Int(crossfadeStr) {
+            crossfade = xfade
         }
     }
     
