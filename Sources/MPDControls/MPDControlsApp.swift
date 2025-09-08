@@ -20,6 +20,7 @@ struct MPDControlsApp: App {
 class AppState: ObservableObject {
     @Published var mpdClient: MPDClient
     @Published var mediaKeyHandler: MediaKeyHandler?
+    @Published var notificationManager: NotificationManager?
     @Published var settings = Settings()
     
     private var updateTimer: Timer?
@@ -31,12 +32,16 @@ class AppState: ObservableObject {
         
         self.mpdClient = MPDClient(host: host, port: actualPort)
         self.mediaKeyHandler = MediaKeyHandler(mpdClient: mpdClient)
+        self.notificationManager = NotificationManager(mpdClient: mpdClient)
         
         // Auto-connect on launch
         connectToMPD()
         
         // Start media key listening
         mediaKeyHandler?.startListening()
+        
+        // Enable notifications if settings allow
+        notificationManager?.setEnabled(settings.showNotifications)
         
         // Setup update timer
         startUpdateTimer()
@@ -64,6 +69,8 @@ class AppState: ObservableObject {
         mpdClient = MPDClient(host: host, port: port)
         mediaKeyHandler = MediaKeyHandler(mpdClient: mpdClient)
         mediaKeyHandler?.startListening()
+        notificationManager = NotificationManager(mpdClient: mpdClient)
+        notificationManager?.setEnabled(settings.showNotifications)
         mpdClient.connect()
     }
     
@@ -73,6 +80,7 @@ class AppState: ObservableObject {
                 if self.mpdClient.connectionStatus == .connected {
                     self.mpdClient.updateStatus()
                     self.mpdClient.updateCurrentSong()
+                    self.notificationManager?.checkForSongChange()
                 } else if self.mpdClient.connectionStatus == .disconnected {
                     // Auto-reconnect
                     self.mpdClient.connect()
@@ -89,5 +97,7 @@ class AppState: ObservableObject {
 
 struct Settings {
     var updateInterval: TimeInterval = 5.0
-    var showNotifications: Bool = false
+    var showNotifications: Bool = true
+    var autoReconnect: Bool = true
+    var notificationSound: Bool = false
 }

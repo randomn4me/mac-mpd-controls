@@ -5,6 +5,7 @@ struct SettingsView: View {
     @State private var host: String = ""
     @State private var port: String = ""
     @State private var showNotifications: Bool = false
+    @State private var autoReconnect: Bool = true
     @State private var updateInterval: Double = 5.0
     @Environment(\.dismiss) private var dismiss
     
@@ -46,7 +47,8 @@ struct SettingsView: View {
             GroupBox("Preferences") {
                 VStack(alignment: .leading, spacing: 12) {
                     Toggle("Show notifications for track changes", isOn: $showNotifications)
-                        .disabled(true) // Not implemented yet
+                    
+                    Toggle("Auto-reconnect when disconnected", isOn: $autoReconnect)
                     
                     HStack {
                         Text("Update interval:")
@@ -111,6 +113,7 @@ struct SettingsView: View {
         let savedPort = UserDefaults.standard.integer(forKey: "mpd_port")
         port = savedPort > 0 ? String(savedPort) : "6600"
         showNotifications = appState.settings.showNotifications
+        autoReconnect = appState.settings.autoReconnect
         updateInterval = appState.settings.updateInterval
     }
     
@@ -128,7 +131,11 @@ struct SettingsView: View {
         
         // Update settings
         appState.settings.showNotifications = showNotifications
+        appState.settings.autoReconnect = autoReconnect
         appState.settings.updateInterval = updateInterval
+        
+        // Update notification manager
+        appState.notificationManager?.setEnabled(showNotifications)
         
         // Update MPD connection
         appState.updateMPDConnection(host: host.isEmpty ? "127.0.0.1" : host, port: portNumber)
