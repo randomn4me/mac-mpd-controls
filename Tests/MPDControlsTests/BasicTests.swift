@@ -14,6 +14,8 @@ struct BasicTests {
         testConnectionStatus()
         testVolumeOperations()
         testCrossfadeOperations()
+        testPlaylistOperations()
+        testSearchFunctionality()
         
         print("\n=== All Tests Passed ===\n")
     }
@@ -211,5 +213,70 @@ struct BasicTests {
         }
         
         print("✓ Crossfade Operations tests passed")
+    }
+    
+    static func testPlaylistOperations() {
+        print("Testing Playlist Operations...")
+        
+        // Test playlist command creation
+        let playlistCommands: [(MPDCommand, String)] = [
+            (.loadPlaylist("myplaylist"), "load \"myplaylist\""),
+            (.savePlaylist("newlist"), "save \"newlist\""),
+            (.deletePlaylist("oldlist"), "rm \"oldlist\""),
+            (.listPlaylists, "listplaylists"),
+            (.addUri("http://stream.example.com"), "add \"http://stream.example.com\""),
+            (.playId(42), "playid 42"),
+            (.deleteId(10), "deleteid 10"),
+            (.moveId(5, to: 10), "moveid 5 10"),
+            (.swapId(3, with: 7), "swapid 3 7")
+        ]
+        
+        for (command, expectedString) in playlistCommands {
+            assert(command.toString() == expectedString, 
+                   "Playlist command \(command) should produce '\(expectedString)'")
+        }
+        
+        print("✓ Playlist Operations tests passed")
+    }
+    
+    static func testSearchFunctionality() {
+        print("Testing Search Functionality...")
+        
+        // Test search result parsing
+        let searchResponse = """
+        file: artist1/album1/song1.mp3
+        Artist: Artist One
+        Title: Song One
+        Album: Album One
+        file: artist2/album2/song2.mp3
+        Artist: Artist Two
+        Title: Song Two
+        Album: Album Two
+        OK
+        """
+        
+        let result = MPDParser.parse(searchResponse)
+        switch result {
+        case .success(let response):
+            // Should have parsed the search results
+            assert(response.fields["file"] != nil || response.fields["Artist"] != nil)
+        case .failure:
+            assert(false, "Search response should parse successfully")
+        }
+        
+        // Test search command creation
+        let searchCommands: [(MPDCommand, String)] = [
+            (.search(type: "artist", query: "Beatles"), "search artist \"Beatles\""),
+            (.search(type: "album", query: "Abbey Road"), "search album \"Abbey Road\""),
+            (.search(type: "title", query: "Hey Jude"), "search title \"Hey Jude\""),
+            (.search(type: "any", query: "music"), "search any \"music\"")
+        ]
+        
+        for (command, expectedString) in searchCommands {
+            assert(command.toString() == expectedString,
+                   "Search command \(command) should produce '\(expectedString)'")
+        }
+        
+        print("✓ Search Functionality tests passed")
     }
 }
