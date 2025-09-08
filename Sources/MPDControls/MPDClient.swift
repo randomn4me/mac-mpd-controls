@@ -2,7 +2,7 @@ import Foundation
 import Network
 
 @MainActor
-public class MPDClient: ObservableObject {
+public final class MPDClient: ObservableObject {
     @Published public var connectionStatus: ConnectionStatus = .disconnected
     @Published public var currentSong: Song?
     @Published public var playerState: PlayerState = .stopped
@@ -58,9 +58,9 @@ public class MPDClient: ObservableObject {
         }
     }
     
-    private struct MPDCommand {
+    private struct MPDCommand: Sendable {
         let command: String
-        let completion: ((Result<[String: String], Error>) -> Void)?
+        let completion: (@Sendable (Result<[String: String], Error>) -> Void)?
     }
     
     public init(host: String = "127.0.0.1", port: UInt16 = 6600) {
@@ -69,7 +69,11 @@ public class MPDClient: ObservableObject {
     }
     
     deinit {
-        disconnect()
+        connection?.cancel()
+        connection = nil
+        commandQueue.removeAll()
+        isProcessingCommand = false
+        receiveBuffer = ""
     }
     
     // MARK: - Connection Management
@@ -85,7 +89,9 @@ public class MPDClient: ObservableObject {
         connection = NWConnection(host: endpoint, port: portEndpoint, using: .tcp)
         
         connection?.stateUpdateHandler = { [weak self] state in
-            self?.handleConnectionStateChange(state)
+            Task { @MainActor in
+                self?.handleConnectionStateChange(state)
+            }
         }
         
         connection?.start(queue: .global(qos: .userInitiated))
@@ -127,17 +133,17 @@ public class MPDClient: ObservableObject {
     
     private func startReceiving() {
         connection?.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] data, _, isComplete, error in
-            if let data = data, !data.isEmpty {
-                self?.handleReceivedData(data)
-            }
-            
-            if error == nil && !isComplete {
-                self?.startReceiving()
-            } else if let error = error {
-                DispatchQueue.main.async {
-                    self?.connectionStatus = .failed("Receive error: \(error.localizedDescription)")
+            DispatchQueue.main.async {
+                if let data = data, !data.isEmpty {
+                    self?.handleReceivedData(data)
                 }
-                self?.disconnect()
+                
+                if error == nil && !isComplete {
+                    self?.startReceiving()
+                } else if let error = error {
+                    self?.connectionStatus = .failed("Receive error: \(error.localizedDescription)")
+                    self?.disconnect()
+                }
             }
         }
     }
@@ -190,7 +196,7 @@ public class MPDClient: ObservableObject {
     
     // MARK: - Command Execution
     
-    private func sendCommand(_ command: String, completion: ((Result<[String: String], Error>) -> Void)? = nil) {
+    private func sendCommand(_ command: String, completion: (@Sendable (Result<[String: String], Error>) -> Void)? = nil) {
         guard connectionStatus == .connected else {
             completion?(.failure(NSError(domain: "MPDClient", code: 1, userInfo: [NSLocalizedDescriptionKey: "Not connected"])))
             return
@@ -213,10 +219,12 @@ public class MPDClient: ObservableObject {
         let data = (command.command + "\n").data(using: .utf8)!
         connection?.send(content: data, completion: .contentProcessed { [weak self] error in
             if let error = error {
-                self?.commandQueue.removeFirst()
-                self?.isProcessingCommand = false
-                command.completion?(.failure(error))
-                self?.processNextCommand()
+                Task { @MainActor in
+                    self?.commandQueue.removeFirst()
+                    self?.isProcessingCommand = false
+                    command.completion?(.failure(error))
+                    self?.processNextCommand()
+                }
             }
         })
     }
@@ -245,55 +253,71 @@ public class MPDClient: ObservableObject {
     
     public func play() {
         sendCommand("play") { [weak self] _ in
-            self?.updateStatus()
-            self?.updateCurrentSong()
+            Task { @MainActor in
+                self?.updateStatus()
+                self?.updateCurrentSong()
+            }
         }
     }
     
     public func pause() {
         sendCommand("pause") { [weak self] _ in
-            self?.updateStatus()
+            Task { @MainActor in
+                self?.updateStatus()
+            }
         }
     }
     
     public func stop() {
         sendCommand("stop") { [weak self] _ in
-            self?.updateStatus()
-            self?.updateCurrentSong()
+            Task { @MainActor in
+                self?.updateStatus()
+                self?.updateCurrentSong()
+            }
         }
     }
     
     public func toggle() {
         sendCommand("pause") { [weak self] _ in
-            self?.updateStatus()
+            Task { @MainActor in
+                self?.updateStatus()
+            }
         }
     }
     
     public func next() {
         sendCommand("next") { [weak self] _ in
-            self?.updateStatus()
-            self?.updateCurrentSong()
+            Task { @MainActor in
+                self?.updateStatus()
+                self?.updateCurrentSong()
+            }
         }
     }
     
     public func previous() {
         sendCommand("previous") { [weak self] _ in
-            self?.updateStatus()
-            self?.updateCurrentSong()
+            Task { @MainActor in
+                self?.updateStatus()
+                self?.updateCurrentSong()
+            }
         }
     }
     
     public func toggleRandom() {
         let newValue = !playbackOptions.random
         sendCommand("random \(newValue ? 1 : 0)") { [weak self] _ in
-            self?.updateStatus()
+            Task { @MainActor in
+                self?.updateStatus()
+            }
         }
     }
     
     public func toggleRepeat() {
         let newValue = !playbackOptions.`repeat`
         sendCommand("repeat \(newValue ? 1 : 0)") { [weak self] _ in
-            self?.updateStatus()
+            Task { @MainActor in
+                self?.updateStatus()
+            }
         }
     }
     
@@ -308,7 +332,9 @@ public class MPDClient: ObservableObject {
             newMode = .off
         }
         sendCommand("single \(newMode.rawValue)") { [weak self] _ in
-            self?.updateStatus()
+            Task { @MainActor in
+                self?.updateStatus()
+            }
         }
     }
     
@@ -323,38 +349,50 @@ public class MPDClient: ObservableObject {
             newMode = .off
         }
         sendCommand("consume \(newMode.rawValue)") { [weak self] _ in
-            self?.updateStatus()
+            Task { @MainActor in
+                self?.updateStatus()
+            }
         }
     }
     
     public func setRandom(_ enabled: Bool) {
         sendCommand("random \(enabled ? 1 : 0)") { [weak self] _ in
-            self?.updateStatus()
+            Task { @MainActor in
+                self?.updateStatus()
+            }
         }
     }
     
     public func setRepeat(_ enabled: Bool) {
         sendCommand("repeat \(enabled ? 1 : 0)") { [weak self] _ in
-            self?.updateStatus()
+            Task { @MainActor in
+                self?.updateStatus()
+            }
         }
     }
     
     public func setSingle(_ mode: PlaybackOptions.SingleMode) {
         sendCommand("single \(mode.rawValue)") { [weak self] _ in
-            self?.updateStatus()
+            Task { @MainActor in
+                self?.updateStatus()
+            }
         }
     }
     
     public func setConsume(_ mode: PlaybackOptions.ConsumeMode) {
         sendCommand("consume \(mode.rawValue)") { [weak self] _ in
-            self?.updateStatus()
+            Task { @MainActor in
+                self?.updateStatus()
+            }
         }
     }
     
     public func setVolume(_ volume: Int) {
         let clampedVolume = max(0, min(100, volume))
         sendCommand("setvol \(clampedVolume)") { [weak self] _ in
-            self?.updateStatus()
+            Task { @MainActor in
+                self?.updateStatus()
+            }
         }
     }
     
@@ -372,20 +410,26 @@ public class MPDClient: ObservableObject {
     
     public func addUri(_ uri: String) {
         sendCommand("add \(uri)") { [weak self] _ in
-            self?.updateStatus()
+            Task { @MainActor in
+                self?.updateStatus()
+            }
         }
     }
     
     public func playId(_ id: Int) {
         sendCommand("playid \(id)") { [weak self] _ in
-            self?.updateStatus()
-            self?.updateCurrentSong()
+            Task { @MainActor in
+                self?.updateStatus()
+                self?.updateCurrentSong()
+            }
         }
     }
     
     public func seek(to position: TimeInterval) {
         sendCommand("seekcur \(position)") { [weak self] _ in
-            self?.updateStatus()
+            Task { @MainActor in
+                self?.updateStatus()
+            }
         }
     }
     

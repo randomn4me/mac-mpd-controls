@@ -2,7 +2,7 @@ import Foundation
 import AppKit
 import Carbon
 
-public class MediaKeyHandler {
+public final class MediaKeyHandler: @unchecked Sendable {
     private let mpdClient: MPDClient
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
@@ -19,7 +19,7 @@ public class MediaKeyHandler {
     public func startListening() {
         guard !isListening else { return }
         
-        let eventMask = CGEventMask(1 << CGEventType.systemDefined.rawValue)
+        let eventMask = CGEventMask(1 << 14) // System defined event type
         
         // Create event tap callback
         let callback: CGEventTapCallBack = { _, type, event, refcon in
@@ -32,7 +32,8 @@ public class MediaKeyHandler {
                 return Unmanaged.passUnretained(event)
             }
             
-            guard type == .systemDefined else {
+            // Check if it's a system defined event (raw value 14)
+            guard type.rawValue == 14 else {
                 return Unmanaged.passUnretained(event)
             }
             
@@ -80,7 +81,9 @@ public class MediaKeyHandler {
         
         guard let eventTap = eventTap else {
             print("Failed to create event tap. Make sure the app has accessibility permissions.")
-            requestAccessibilityPermissions()
+            Task { @MainActor in
+                requestAccessibilityPermissions()
+            }
             return
         }
         
@@ -139,6 +142,7 @@ public class MediaKeyHandler {
         }
     }
     
+    @MainActor
     private func requestAccessibilityPermissions() {
         let alert = NSAlert()
         alert.messageText = "Accessibility Permission Required"

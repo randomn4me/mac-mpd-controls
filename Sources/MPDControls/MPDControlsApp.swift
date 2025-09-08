@@ -16,6 +16,7 @@ struct MPDControlsApp: App {
     }
 }
 
+@MainActor
 class AppState: ObservableObject {
     @Published var mpdClient: MPDClient
     @Published var mediaKeyHandler: MediaKeyHandler?
@@ -42,9 +43,7 @@ class AppState: ObservableObject {
     }
     
     deinit {
-        stopUpdateTimer()
-        mediaKeyHandler?.stopListening()
-        mpdClient.disconnect()
+        // Cleanup handled by system
     }
     
     func connectToMPD() {
@@ -70,12 +69,14 @@ class AppState: ObservableObject {
     
     private func startUpdateTimer() {
         updateTimer = Timer.scheduledTimer(withTimeInterval: settings.updateInterval, repeats: true) { _ in
-            if self.mpdClient.connectionStatus == .connected {
-                self.mpdClient.updateStatus()
-                self.mpdClient.updateCurrentSong()
-            } else if self.mpdClient.connectionStatus == .disconnected {
-                // Auto-reconnect
-                self.mpdClient.connect()
+            Task { @MainActor in
+                if self.mpdClient.connectionStatus == .connected {
+                    self.mpdClient.updateStatus()
+                    self.mpdClient.updateCurrentSong()
+                } else if self.mpdClient.connectionStatus == .disconnected {
+                    // Auto-reconnect
+                    self.mpdClient.connect()
+                }
             }
         }
     }
