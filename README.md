@@ -4,14 +4,30 @@ A unified Swift application that combines MPD (Music Player Daemon) control func
 
 ## Features
 
+### Core Functionality
 - **Menu Bar Interface**: Quick access to MPD controls from the macOS menu bar
 - **Media Key Support**: Control MPD using keyboard media keys (Play/Pause, Next, Previous)
 - **Network Communication**: Direct TCP connection to MPD server without external dependencies
-- **Auto-Reconnection**: Automatic reconnection to MPD when connection is lost
-- **Volume Control**: Integrated volume slider in the menu bar
-- **Playback Options**: Toggle random, repeat, single, and consume modes
-- **Now Playing Display**: Shows current song information
+- **Auto-Reconnection**: Automatic reconnection with exponential backoff
+- **Real-time Updates**: Configurable polling interval for status updates
 - **Cross-Platform Core**: Modular design with platform-specific UI and shared core logic
+
+### Playback Features
+- **Volume Control**: Integrated volume slider with visual feedback
+- **Crossfade Control**: Adjust crossfade duration between tracks
+- **Playback Options**: Toggle random, repeat, single, and consume modes
+- **Queue Management**: Add, remove, move, and swap items in the play queue
+- **Playlist Management**: Load, save, and delete playlists
+- **Now Playing Display**: Shows current track information with artist, title, and album
+
+### Advanced Features
+- **Search Functionality**: Search by artist, album, title, or any field
+- **Database Operations**: Update and rescan music database
+- **Output Control**: Manage multiple audio outputs
+- **Statistics**: View server statistics (songs, albums, uptime, etc.)
+- **Idle Command Support**: Monitor MPD subsystem changes
+- **Notifications**: macOS notifications for track changes
+- **Settings Persistence**: Save connection and preference settings
 
 ## Architecture
 
