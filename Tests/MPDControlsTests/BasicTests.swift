@@ -109,6 +109,3 @@ struct BasicTests {
         print("✓ MPD Parser tests passed")
     }
 }
-
-// Main entry point for tests
-BasicTests.run()
