@@ -62,6 +62,23 @@ struct MenuBarView: View {
                 .padding(.vertical, 8)
                 
                 Divider()
+                
+                // Database Controls
+                HStack {
+                    Button("Update Database") {
+                        appState.mpdClient.updateDatabase()
+                    }
+                    
+                    Spacer()
+                    
+                    Button("Rescan Database") {
+                        appState.mpdClient.rescanDatabase()
+                    }
+                }
+                .padding(.horizontal)
+                .padding(.vertical, 8)
+                
+                Divider()
             }
             
             // Bottom Actions
