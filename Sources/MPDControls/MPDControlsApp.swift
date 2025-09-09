@@ -1,47 +1,168 @@
-import SwiftUI
+import Foundation
 import AppKit
 
-@main
-struct MPDControlsApp: App {
-    @StateObject private var appState = AppState()
-    @State private var updateTimer: Timer?
+// Logger for handling verbose output and file logging
+class Logger {
+    static let shared = Logger()
+    private var logFile: FileHandle?
+    private var verbose = false
     
-    var body: some Scene {
-        MenuBarExtra {
-            if appState.settings.showSeparateMenuBar {
-                MenuBarView(appState: appState)
-            } else {
-                // Create minimal menu when using system now playing only
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("MPD Controls")
-                        .font(.headline)
-                    
-                    Text("Using system Now Playing controls")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    
-                    Divider()
-                    
-                    Button("Open Settings") {
-                        // TODO: Add settings action
-                    }
-                    
-                    Button("Quit") {
-                        NSApplication.shared.terminate(nil)
-                    }
-                }
-                .padding()
-            }
-        } label: {
-            if appState.settings.showSeparateMenuBar {
-                MenuBarLabel(appState: appState)
-            } else {
-                // Show minimal indicator
-                Image(systemName: "music.note")
-                    .opacity(0.6)
+    func setup(verbose: Bool, logFile: String?) {
+        self.verbose = verbose
+        
+        if let logPath = logFile {
+            let url = URL(fileURLWithPath: logPath)
+            FileManager.default.createFile(atPath: url.path, contents: nil)
+            do {
+                self.logFile = try FileHandle(forWritingTo: url)
+                self.logFile?.seekToEndOfFile()
+            } catch {
+                print("Error: Could not open log file '\(logPath)': \(error)")
             }
         }
-        .menuBarExtraStyle(.window)
+    }
+    
+    func log(_ message: String) {
+        let timestamp = ISO8601DateFormatter().string(from: Date())
+        let logMessage = "[\(timestamp)] \(message)\n"
+        
+        if verbose {
+            print(message)
+        }
+        
+        if let logFile = logFile {
+            logFile.write(logMessage.data(using: .utf8) ?? Data())
+        }
+    }
+    
+    deinit {
+        logFile?.closeFile()
+    }
+}
+
+// Configuration structure for command line arguments
+struct Configuration {
+    var host: String = "127.0.0.1"
+    var port: UInt16 = 6600
+    var updateInterval: TimeInterval = 2.0
+    var showNotifications: Bool = true
+    var autoReconnect: Bool = true
+    var useSystemNowPlaying: Bool = true
+    var musicDirectory: String?
+    var verbose: Bool = false
+    var logFile: String?
+    var help: Bool = false
+    
+    init(arguments: [String]) {
+        var i = 1
+        while i < arguments.count {
+            let arg = arguments[i]
+            
+            switch arg {
+            case "-h", "--help":
+                help = true
+            case "-v", "--verbose":
+                verbose = true
+            case "--host":
+                if i + 1 < arguments.count {
+                    host = arguments[i + 1]
+                    i += 1
+                }
+            case "--port":
+                if i + 1 < arguments.count {
+                    port = UInt16(arguments[i + 1]) ?? 6600
+                    i += 1
+                }
+            case "--update-interval":
+                if i + 1 < arguments.count {
+                    updateInterval = TimeInterval(arguments[i + 1]) ?? 2.0
+                    i += 1
+                }
+            case "--no-notifications":
+                showNotifications = false
+            case "--no-auto-reconnect":
+                autoReconnect = false
+            case "--no-system-now-playing":
+                useSystemNowPlaying = false
+            case "--music-directory":
+                if i + 1 < arguments.count {
+                    musicDirectory = arguments[i + 1]
+                    i += 1
+                }
+            case "--log-file":
+                if i + 1 < arguments.count {
+                    logFile = arguments[i + 1]
+                    i += 1
+                }
+            default:
+                if !arg.starts(with: "-") {
+                    // Ignore unknown arguments
+                }
+            }
+            i += 1
+        }
+    }
+    
+    func printHelp() {
+        print("""
+        MPD Controls - A command-line MPD client with system Now Playing integration
+        
+        USAGE:
+            MPDControls [OPTIONS]
+        
+        OPTIONS:
+            -h, --help                      Show this help message
+            -v, --verbose                   Enable verbose logging to stdout
+            --host HOST                     MPD server host (default: 127.0.0.1)
+            --port PORT                     MPD server port (default: 6600)
+            --update-interval SECONDS       Update interval in seconds (default: 2.0)
+            --no-notifications             Disable desktop notifications
+            --no-auto-reconnect            Disable automatic reconnection
+            --no-system-now-playing        Disable system Now Playing integration
+            --music-directory PATH          Path to music directory for album art
+            --log-file PATH                 Log to file instead of/in addition to stdout
+        
+        EXAMPLES:
+            MPDControls --host 192.168.1.100 --port 6600 -v
+            MPDControls --music-directory ~/Music --log-file ~/.mpd-controls.log
+            MPDControls --no-notifications --update-interval 5.0
+        """)
+    }
+}
+
+@main
+struct MPDControlsApp {
+    static func main() {
+        let config = Configuration(arguments: CommandLine.arguments)
+        
+        if config.help {
+            config.printHelp()
+            return
+        }
+        
+        // Setup logging
+        Logger.shared.setup(verbose: config.verbose, logFile: config.logFile)
+        Logger.shared.log("MPD Controls starting...")
+        Logger.shared.log("Configuration: host=\(config.host), port=\(config.port), update_interval=\(config.updateInterval)")
+        
+        // Create and start the app state
+        let _ = AppState(config: config)
+        
+        // Set up signal handlers for clean shutdown
+        signal(SIGINT) { _ in
+            Logger.shared.log("Received SIGINT, shutting down...")
+            exit(0)
+        }
+        
+        signal(SIGTERM) { _ in
+            Logger.shared.log("Received SIGTERM, shutting down...")
+            exit(0)
+        }
+        
+        Logger.shared.log("MPD Controls started. Press Ctrl+C to stop.")
+        
+        // Keep the app running
+        NSApplication.shared.run()
     }
 }
 
@@ -51,25 +172,26 @@ class AppState: ObservableObject {
     @Published var mediaKeyHandler: MediaKeyHandler?
     @Published var notificationManager: NotificationManager?
     @Published var systemNowPlayingManager: SystemNowPlayingManager?
-    @Published var settings = Settings()
     
+    private var config: Configuration
     private var updateTimer: Timer?
     
-    init() {
-        print("AppState initializing...")
-        let host = UserDefaults.standard.string(forKey: "mpd_host") ?? "127.0.0.1"
-        let port = UInt16(UserDefaults.standard.integer(forKey: "mpd_port"))
-        let actualPort = port > 0 ? port : 6600
+    init(config: Configuration) {
+        self.config = config
         
-        print("MPD settings: \(host):\(actualPort)")
+        Logger.shared.log("AppState initializing...")
+        Logger.shared.log("MPD settings: \(config.host):\(config.port)")
         
-        self.mpdClient = MPDClient(host: host, port: actualPort)
+        self.mpdClient = MPDClient(host: config.host, port: config.port)
         self.mediaKeyHandler = MediaKeyHandler(mpdClient: mpdClient)
         self.notificationManager = NotificationManager(mpdClient: mpdClient)
         self.systemNowPlayingManager = SystemNowPlayingManager(mpdClient: mpdClient)
         
-        // Load settings from UserDefaults
-        loadSettings()
+        // Configure music directory if provided
+        if let musicDir = config.musicDirectory {
+            Logger.shared.log("Setting music directory: \(musicDir)")
+            systemNowPlayingManager?.setMusicDirectory(musicDir)
+        }
         
         // Auto-connect on launch
         connectToMPD()
@@ -80,10 +202,12 @@ class AppState: ObservableObject {
         }
         
         // Enable notifications if settings allow
-        notificationManager?.setEnabled(settings.showNotifications)
+        notificationManager?.setEnabled(config.showNotifications)
+        Logger.shared.log("Notifications: \(config.showNotifications ? "enabled" : "disabled")")
         
         // Enable system now playing if settings allow
-        systemNowPlayingManager?.setEnabled(settings.useSystemNowPlaying)
+        systemNowPlayingManager?.setEnabled(config.useSystemNowPlaying)
+        Logger.shared.log("System Now Playing: \(config.useSystemNowPlaying ? "enabled" : "disabled")")
         
         // Setup update timer
         startUpdateTimer()
@@ -96,77 +220,30 @@ class AppState: ObservableObject {
             object: nil
         )
         
-        print("AppState initialization complete")
+        Logger.shared.log("AppState initialization complete")
     }
     
     deinit {
-        // Cleanup handled by system
-    }
-    
-    func loadSettings() {
-        settings.updateInterval = UserDefaults.standard.double(forKey: "mpd_update_interval") 
-        if settings.updateInterval <= 0 { settings.updateInterval = 2.0 }
-        
-        if UserDefaults.standard.object(forKey: "mpd_show_notifications") != nil {
-            settings.showNotifications = UserDefaults.standard.bool(forKey: "mpd_show_notifications")
-        } else {
-            settings.showNotifications = true
+        Task { @MainActor in
+            self.stopUpdateTimer()
         }
-        
-        if UserDefaults.standard.object(forKey: "mpd_auto_reconnect") != nil {
-            settings.autoReconnect = UserDefaults.standard.bool(forKey: "mpd_auto_reconnect")
-        } else {
-            settings.autoReconnect = true
-        }
-        
-        if UserDefaults.standard.object(forKey: "mpd_use_system_now_playing") != nil {
-            settings.useSystemNowPlaying = UserDefaults.standard.bool(forKey: "mpd_use_system_now_playing")
-        } else {
-            settings.useSystemNowPlaying = true
-        }
-        
-        settings.showSeparateMenuBar = UserDefaults.standard.bool(forKey: "mpd_show_separate_menu_bar")
-    }
-    
-    func saveSettings() {
-        UserDefaults.standard.set(settings.updateInterval, forKey: "mpd_update_interval")
-        UserDefaults.standard.set(settings.showNotifications, forKey: "mpd_show_notifications")
-        UserDefaults.standard.set(settings.autoReconnect, forKey: "mpd_auto_reconnect")
-        UserDefaults.standard.set(settings.useSystemNowPlaying, forKey: "mpd_use_system_now_playing")
-        UserDefaults.standard.set(settings.showSeparateMenuBar, forKey: "mpd_show_separate_menu_bar")
+        Logger.shared.log("AppState deinitialized")
     }
     
     func connectToMPD() {
+        Logger.shared.log("Connecting to MPD server...")
         mpdClient.connect()
     }
     
     func disconnectFromMPD() {
+        Logger.shared.log("Disconnecting from MPD server...")
         mpdClient.disconnect()
-    }
-    
-    func updateMPDConnection(host: String, port: UInt16) {
-        // Save to UserDefaults
-        UserDefaults.standard.set(host, forKey: "mpd_host")
-        UserDefaults.standard.set(port, forKey: "mpd_port")
-        
-        // Properly stop the old media key handler before creating a new one
-        mediaKeyHandler?.stopListening()
-        
-        // Reconnect with new settings
-        mpdClient.disconnect()
-        mpdClient = MPDClient(host: host, port: port)
-        mediaKeyHandler = MediaKeyHandler(mpdClient: mpdClient)
-        mediaKeyHandler?.startListening()
-        notificationManager = NotificationManager(mpdClient: mpdClient)
-        notificationManager?.setEnabled(settings.showNotifications)
-        systemNowPlayingManager = SystemNowPlayingManager(mpdClient: mpdClient)
-        systemNowPlayingManager?.setEnabled(settings.useSystemNowPlaying)
-        mpdClient.connect()
     }
     
     private func startUpdateTimer() {
         stopUpdateTimer()
-        updateTimer = Timer.scheduledTimer(withTimeInterval: settings.updateInterval, repeats: true) { _ in
+        Logger.shared.log("Starting update timer with interval: \(config.updateInterval)s")
+        updateTimer = Timer.scheduledTimer(withTimeInterval: config.updateInterval, repeats: true) { _ in
             Task { @MainActor in
                 if self.mpdClient.connectionStatus == .connected {
                     self.mpdClient.updateStatus()
@@ -176,7 +253,8 @@ class AppState: ObservableObject {
                     self.systemNowPlayingManager?.updateNowPlayingInfo()
                 } else if self.mpdClient.connectionStatus == .disconnected {
                     // Auto-reconnect if enabled
-                    if self.settings.autoReconnect {
+                    if self.config.autoReconnect {
+                        Logger.shared.log("Auto-reconnecting to MPD server...")
                         self.mpdClient.connect()
                     }
                 }
@@ -189,7 +267,7 @@ class AppState: ObservableObject {
     }
     
     @objc private func handleMPDStatusChanged() {
-        // Update UI components when MPD status changes via idle mode
+        // Update components when MPD status changes via idle mode
         notificationManager?.checkForSongChange()
         systemNowPlayingManager?.updateNowPlayingInfo()
     }
@@ -197,14 +275,6 @@ class AppState: ObservableObject {
     private func stopUpdateTimer() {
         updateTimer?.invalidate()
         updateTimer = nil
+        Logger.shared.log("Update timer stopped")
     }
-}
-
-struct Settings {
-    var updateInterval: TimeInterval = 2.0  // More frequent polling for better elapsed time tracking
-    var showNotifications: Bool = true
-    var autoReconnect: Bool = true
-    var notificationSound: Bool = false
-    var useSystemNowPlaying: Bool = true  // Default to Now Playing integration
-    var showSeparateMenuBar: Bool = false // Optional separate menu bar icon
 }

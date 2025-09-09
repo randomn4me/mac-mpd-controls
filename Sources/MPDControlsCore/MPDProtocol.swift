@@ -63,6 +63,8 @@ public enum MPDCommand {
     case disableOutput(Int)
     case load(String)
     case save(String)
+    case albumArt(String, Int)
+    case readPicture(String, Int)
     
     public func toString() -> String {
         switch self {
@@ -126,6 +128,10 @@ public enum MPDCommand {
             return "load \"\(playlist)\""
         case .save(let playlist):
             return "save \"\(playlist)\""
+        case .albumArt(let uri, let offset):
+            return "albumart \"\(uri)\" \(offset)"
+        case .readPicture(let uri, let offset):
+            return "readpicture \"\(uri)\" \(offset)"
         }
     }
 }

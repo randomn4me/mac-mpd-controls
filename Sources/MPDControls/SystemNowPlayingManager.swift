@@ -7,10 +7,14 @@ import AppKit
 @MainActor
 public final class SystemNowPlayingManager: NSObject {
     private let mpdClient: MPDClient
+    private let albumArtManager: AlbumArtManager
     private var isEnabled: Bool = false
+    private var lastSongFile: String?
+    private var currentArtwork: Any? // Store current MPMediaItemArtwork
     
     public init(mpdClient: MPDClient) {
         self.mpdClient = mpdClient
+        self.albumArtManager = AlbumArtManager(mpdClient: mpdClient)
         super.init()
     }
     
@@ -31,6 +35,69 @@ public final class SystemNowPlayingManager: NSObject {
         guard isEnabled else { return }
         setupNowPlayingInfo()
     }
+    
+    public func setMusicDirectory(_ path: String) {
+        albumArtManager.setMusicDirectory(path)
+    }
+    
+    #if os(macOS)
+    private func resizeImage(_ image: NSImage, to size: CGSize) -> NSImage {
+        print("SystemNowPlayingManager: Resizing image from \(image.size) to \(size)")
+        print("SystemNowPlayingManager: Original image isValid: \(image.isValid), representations: \(image.representations.count)")
+        
+        // If the requested size is the same as original, return original
+        if image.size.width == size.width && image.size.height == size.height {
+            print("SystemNowPlayingManager: Size unchanged, returning original image")
+            return image
+        }
+        
+        // Create a new image with proper bitmap representation
+        let scaledImage = NSImage(size: size)
+        
+        // Create a bitmap representation directly
+        if let originalBitmapRep = NSBitmapImageRep(data: image.tiffRepresentation!) {
+            let scaledBitmapRep = NSBitmapImageRep(
+                bitmapDataPlanes: nil,
+                pixelsWide: Int(size.width),
+                pixelsHigh: Int(size.height),
+                bitsPerSample: 8,
+                samplesPerPixel: 4,
+                hasAlpha: true,
+                isPlanar: false,
+                colorSpaceName: .deviceRGB,
+                bytesPerRow: 0,
+                bitsPerPixel: 0
+            )!
+            
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: scaledBitmapRep)
+            
+            originalBitmapRep.draw(in: NSRect(origin: .zero, size: size))
+            
+            NSGraphicsContext.restoreGraphicsState()
+            
+            scaledImage.addRepresentation(scaledBitmapRep)
+            
+            print("SystemNowPlayingManager: Created resized image with bitmap representation")
+        } else {
+            print("SystemNowPlayingManager: Could not create bitmap rep, using simple approach")
+            // Simple fallback - just return the original image
+            return image
+        }
+        
+        print("SystemNowPlayingManager: Resized image isValid: \(scaledImage.isValid), representations: \(scaledImage.representations.count)")
+        
+        // Test save the resized image
+        if let tiffData = scaledImage.tiffRepresentation,
+           let bitmapRep = NSBitmapImageRep(data: tiffData),
+           let jpegData = bitmapRep.representation(using: .jpeg, properties: [:]) {
+            try? jpegData.write(to: URL(fileURLWithPath: "/tmp/debug_resized_\(Int(size.width))x\(Int(size.height)).jpg"))
+            print("SystemNowPlayingManager: Saved resized debug image to /tmp/debug_resized_\(Int(size.width))x\(Int(size.height)).jpg")
+        }
+        
+        return scaledImage
+    }
+    #endif
     
     private func setupNowPlayingInfo() {
         guard let currentSong = mpdClient.currentSong else {
@@ -74,24 +141,89 @@ public final class SystemNowPlayingManager: NSObject {
         // Media type
         nowPlayingInfo[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
         
-        // Album artwork (placeholder for future implementation)
-        // TODO: Implement album artwork retrieval from MPD via albumart command
-        // For now, we could set a default music icon
-        #if os(macOS)
-        if let musicIcon = NSImage(systemSymbolName: "music.note", accessibilityDescription: nil) {
-            let artwork = MPMediaItemArtwork(boundsSize: musicIcon.size) { _ in
-                return musicIcon
-            }
-            nowPlayingInfo[MPMediaItemPropertyArtwork] = artwork
-        }
-        #endif
+        // Check if this is a different song than last time
+        let currentSongFile = currentSong.file
+        let songChanged = currentSongFile != lastSongFile
         
-        // Set the now playing info
-        MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
+        if songChanged {
+            print("SystemNowPlayingManager: Song changed from '\(lastSongFile ?? "nil")' to '\(currentSongFile ?? "nil")'")
+            lastSongFile = currentSongFile
+        }
+        
+        // Only fetch album artwork if the song has changed
+        if songChanged {
+            print("SystemNowPlayingManager: Fetching album art for new song")
+            // Fetch album artwork asynchronously
+            albumArtManager.getAlbumArt(for: currentSong) { [weak self] albumArt in
+                print("SystemNowPlayingManager: Album art callback received - albumArt is \(albumArt != nil ? "NOT nil" : "nil")")
+                Task { @MainActor in
+                    guard let self = self, self.isEnabled else { 
+                        print("SystemNowPlayingManager: Skipping album art update - self or isEnabled is nil/false")
+                        return 
+                    }
+                    
+                    var updatedInfo = nowPlayingInfo
+                    
+                    #if os(macOS)
+                    if let albumArt = albumArt {
+                        print("SystemNowPlayingManager: Setting album art in now playing info - size: \(albumArt.size)")
+                        print("SystemNowPlayingManager: Album art isValid: \(albumArt.isValid), representations: \(albumArt.representations.count)")
+                        
+                        // Test if we can save the image to verify it's valid
+                        let testPath = "/tmp/debug_album_art.jpg"
+                        if let tiffData = albumArt.tiffRepresentation,
+                           let bitmapRep = NSBitmapImageRep(data: tiffData),
+                           let jpegData = bitmapRep.representation(using: .jpeg, properties: [:]) {
+                            try? jpegData.write(to: URL(fileURLWithPath: testPath))
+                            print("SystemNowPlayingManager: Saved debug image to \(testPath)")
+                        } else {
+                            print("SystemNowPlayingManager: WARNING - Could not convert image to JPEG for testing")
+                        }
+                        
+                        let artwork = MPMediaItemArtwork(boundsSize: albumArt.size) { requestedSize in
+                            print("SystemNowPlayingManager: MPMediaItemArtwork requested size: \(requestedSize)")
+                            // Apple recommends NOT doing expensive resizing in the handler
+                            // Just return the original image
+                            return albumArt
+                        }
+                        updatedInfo[MPMediaItemPropertyArtwork] = artwork
+                        self.currentArtwork = artwork // Store for future updates
+                        print("SystemNowPlayingManager: Album artwork added to nowPlayingInfo")
+                    } else {
+                        print("SystemNowPlayingManager: No album art found, using default icon")
+                        // Fallback to default music icon
+                        if let musicIcon = NSImage(systemSymbolName: "music.note", accessibilityDescription: nil) {
+                            let artwork = MPMediaItemArtwork(boundsSize: musicIcon.size) { requestedSize in
+                                return musicIcon
+                            }
+                            updatedInfo[MPMediaItemPropertyArtwork] = artwork
+                            self.currentArtwork = artwork // Store for future updates
+                            print("SystemNowPlayingManager: Default music icon added to nowPlayingInfo")
+                        }
+                    }
+                    #endif
+                    
+                    print("SystemNowPlayingManager: Updating MPNowPlayingInfoCenter with artwork")
+                    MPNowPlayingInfoCenter.default().nowPlayingInfo = updatedInfo
+                    print("SystemNowPlayingManager: MPNowPlayingInfoCenter updated")
+                }
+            }
+        } else {
+            print("SystemNowPlayingManager: Same song, not fetching album art but updating basic info")
+            // For same song, preserve existing artwork when updating basic info
+            if let artwork = currentArtwork {
+                nowPlayingInfo[MPMediaItemPropertyArtwork] = artwork
+                print("SystemNowPlayingManager: Preserved existing artwork in update")
+            }
+            MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
+        }
     }
     
     private func clearNowPlayingInfo() {
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+        lastSongFile = nil
+        currentArtwork = nil
+        print("SystemNowPlayingManager: Cleared now playing info, last song file, and artwork")
     }
     
     private func setupRemoteCommandCenter() {
