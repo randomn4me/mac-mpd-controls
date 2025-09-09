@@ -159,8 +159,8 @@ public final class AlbumArtManager {
         process.launchPath = "/usr/local/bin/ffmpeg"
         process.arguments = [
             "-i", fullPath,
-            "-an", "-vcodec", "copy",
-            "-update", "1",
+            "-map", "0:v:0",
+            "-c", "copy",
             tempFile,
             "-y"
         ]
@@ -236,8 +236,8 @@ public final class AlbumArtManager {
         }
         
         // Get the directory containing the music file
-        let fileURL = URL(fileURLWithPath: fileURI)
-        let directoryPath = URL(fileURLWithPath: musicDir).appendingPathComponent(fileURL.deletingLastPathComponent().path)
+        let fullPath = URL(fileURLWithPath: musicDir).appendingPathComponent(fileURI).path
+        let directoryPath = URL(fileURLWithPath: fullPath).deletingLastPathComponent()
         Logger.shared.log("AlbumArtManager: Searching for local cover art in: \(directoryPath.path)")
         
         // Common cover art filenames
