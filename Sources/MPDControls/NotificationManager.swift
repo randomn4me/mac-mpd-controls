@@ -17,7 +17,7 @@ public final class NotificationManager: NSObject {
     private func setupNotifications() {
         // Only setup notifications if we're running in an app context (not command line)
         guard Bundle.main.bundleIdentifier != nil else {
-            print("Skipping notification setup in command-line context")
+            Logger.shared.log("Skipping notification setup in command-line context")
             return
         }
         
@@ -25,9 +25,9 @@ public final class NotificationManager: NSObject {
             Task { @MainActor in
                 self.isEnabled = granted
                 if granted {
-                    print("Notifications enabled")
+                    Logger.shared.log("Notifications enabled")
                 } else if let error = error {
-                    print("Notification authorization error: \(error)")
+                    Logger.shared.log("Notification authorization error: \(error)")
                 }
             }
         }
@@ -80,7 +80,7 @@ public final class NotificationManager: NSObject {
         
         UNUserNotificationCenter.current().add(request) { error in
             if let error = error {
-                print("Failed to show notification: \(error)")
+                Logger.shared.log("Failed to show notification: \(error)")
             }
         }
     }

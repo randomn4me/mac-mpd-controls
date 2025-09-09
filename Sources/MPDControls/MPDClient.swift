@@ -281,22 +281,22 @@ public final class MPDClient: ObservableObject {
     // MARK: - Command Execution
     
     private func sendCommand(_ command: String, notifyOnly: Bool = false, completion: (@Sendable (Result<[String: String], Error>) -> Void)? = nil) {
-        print("MPDClient: sendCommand called with: '\(command)', connection status: \(connectionStatus)")
+        Logger.shared.log("MPDClient: sendCommand called with: '\(command)', connection status: \(connectionStatus)")
         guard connectionStatus == .connected else {
-            print("MPDClient: Command '\(command)' failed - not connected")
+            Logger.shared.log("MPDClient: Command '\(command)' failed - not connected")
             completion?(.failure(NSError(domain: "MPDClient", code: 1, userInfo: [NSLocalizedDescriptionKey: "Not connected"])))
             return
         }
         
         // If we're idling and this isn't a notify-only command, we need to interrupt idle
         if isIdling && !notifyOnly {
-            print("MPDClient: Command '\(command)' - interrupting idle mode")
+            Logger.shared.log("MPDClient: Command '\(command)' - interrupting idle mode")
             stopIdleMode()
             // Give the noidle command time to process
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
                 let mpdCommand = MPDCommand(command: command, completion: completion)
                 self?.commandQueue.append(mpdCommand)
-                print("MPDClient: Command '\(command)' queued after idle interruption")
+                Logger.shared.log("MPDClient: Command '\(command)' queued after idle interruption")
                 if !(self?.isProcessingCommand ?? false) {
                     self?.processNextCommand()
                 }
@@ -304,7 +304,7 @@ public final class MPDClient: ObservableObject {
         } else {
             let mpdCommand = MPDCommand(command: command, completion: completion)
             commandQueue.append(mpdCommand)
-            print("MPDClient: Command '\(command)' queued directly")
+            Logger.shared.log("MPDClient: Command '\(command)' queued directly")
             
             if !isProcessingCommand {
                 processNextCommand()
@@ -314,18 +314,18 @@ public final class MPDClient: ObservableObject {
     
     private func processNextCommand() {
         guard !isProcessingCommand, !commandQueue.isEmpty else { 
-            print("MPDClient: processNextCommand - isProcessing: \(isProcessingCommand), queueEmpty: \(commandQueue.isEmpty)")
+            Logger.shared.log("MPDClient: processNextCommand - isProcessing: \(isProcessingCommand), queueEmpty: \(commandQueue.isEmpty)")
             return 
         }
         
         isProcessingCommand = true
         let command = commandQueue.first!
-        print("MPDClient: Processing command: '\(command.command)'")
+        Logger.shared.log("MPDClient: Processing command: '\(command.command)'")
         
         let data = (command.command + "\n").data(using: .utf8)!
         connection?.send(data: data) { [weak self] error in
             if let error = error {
-                print("MPDClient: Command '\(command.command)' send failed with error: \(error)")
+                Logger.shared.log("MPDClient: Command '\(command.command)' send failed with error: \(error)")
                 Task { @MainActor in
                     self?.commandQueue.removeFirst()
                     self?.isProcessingCommand = false
@@ -333,7 +333,7 @@ public final class MPDClient: ObservableObject {
                     self?.processNextCommand()
                 }
             } else {
-                print("MPDClient: Command '\(command.command)' sent successfully, waiting for response")
+                Logger.shared.log("MPDClient: Command '\(command.command)' sent successfully, waiting for response")
             }
         }
     }
@@ -388,14 +388,14 @@ public final class MPDClient: ObservableObject {
     
     private func stopIdleMode() {
         if isIdling {
-            print("MPDClient: Stopping idle mode")
+            Logger.shared.log("MPDClient: Stopping idle mode")
             shouldIdle = false
             isIdling = false
             
             // Send noidle directly without queueing to interrupt the current idle command
             let data = "noidle\n".data(using: .utf8)!
             connection?.send(data: data) { error in
-                print("MPDClient: noidle sent directly, error: \(String(describing: error))")
+                Logger.shared.log("MPDClient: noidle sent directly, error: \(String(describing: error))")
             }
         }
     }
@@ -475,9 +475,9 @@ public final class MPDClient: ObservableObject {
     }
     
     public func toggle() {
-        print("MPDClient: Toggle command called, connection status: \(connectionStatus)")
+        Logger.shared.log("MPDClient: Toggle command called, connection status: \(connectionStatus)")
         sendCommand("pause") { [weak self] result in
-            print("MPDClient: Toggle command result: \(result)")
+            Logger.shared.log("MPDClient: Toggle command result: \(result)")
             Task { @MainActor in
                 self?.updateStatus()
             }

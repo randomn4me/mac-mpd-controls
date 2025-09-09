@@ -17,7 +17,8 @@ class Logger {
                 self.logFile = try FileHandle(forWritingTo: url)
                 self.logFile?.seekToEndOfFile()
             } catch {
-                print("Error: Could not open log file '\(logPath)': \(error)")
+                // Print error to stderr since logger isn't available yet
+                fputs("Error: Could not open log file '\(logPath)': \(error)\n", stderr)
             }
         }
     }
@@ -26,7 +27,8 @@ class Logger {
         let timestamp = ISO8601DateFormatter().string(from: Date())
         let logMessage = "[\(timestamp)] \(message)\n"
         
-        if verbose {
+        // Only print to stdout if verbose AND no log file is configured
+        if verbose && logFile == nil {
             print(message)
         }
         

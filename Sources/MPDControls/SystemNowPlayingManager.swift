@@ -42,12 +42,12 @@ public final class SystemNowPlayingManager: NSObject {
     
     #if os(macOS)
     private func resizeImage(_ image: NSImage, to size: CGSize) -> NSImage {
-        print("SystemNowPlayingManager: Resizing image from \(image.size) to \(size)")
-        print("SystemNowPlayingManager: Original image isValid: \(image.isValid), representations: \(image.representations.count)")
+        Logger.shared.log("SystemNowPlayingManager: Resizing image from \(image.size) to \(size)")
+        Logger.shared.log("SystemNowPlayingManager: Original image isValid: \(image.isValid), representations: \(image.representations.count)")
         
         // If the requested size is the same as original, return original
         if image.size.width == size.width && image.size.height == size.height {
-            print("SystemNowPlayingManager: Size unchanged, returning original image")
+            Logger.shared.log("SystemNowPlayingManager: Size unchanged, returning original image")
             return image
         }
         
@@ -78,21 +78,21 @@ public final class SystemNowPlayingManager: NSObject {
             
             scaledImage.addRepresentation(scaledBitmapRep)
             
-            print("SystemNowPlayingManager: Created resized image with bitmap representation")
+            Logger.shared.log("SystemNowPlayingManager: Created resized image with bitmap representation")
         } else {
-            print("SystemNowPlayingManager: Could not create bitmap rep, using simple approach")
+            Logger.shared.log("SystemNowPlayingManager: Could not create bitmap rep, using simple approach")
             // Simple fallback - just return the original image
             return image
         }
         
-        print("SystemNowPlayingManager: Resized image isValid: \(scaledImage.isValid), representations: \(scaledImage.representations.count)")
+        Logger.shared.log("SystemNowPlayingManager: Resized image isValid: \(scaledImage.isValid), representations: \(scaledImage.representations.count)")
         
         // Test save the resized image
         if let tiffData = scaledImage.tiffRepresentation,
            let bitmapRep = NSBitmapImageRep(data: tiffData),
            let jpegData = bitmapRep.representation(using: .jpeg, properties: [:]) {
             try? jpegData.write(to: URL(fileURLWithPath: "/tmp/debug_resized_\(Int(size.width))x\(Int(size.height)).jpg"))
-            print("SystemNowPlayingManager: Saved resized debug image to /tmp/debug_resized_\(Int(size.width))x\(Int(size.height)).jpg")
+            Logger.shared.log("SystemNowPlayingManager: Saved resized debug image to /tmp/debug_resized_\(Int(size.width))x\(Int(size.height)).jpg")
         }
         
         return scaledImage
@@ -146,19 +146,19 @@ public final class SystemNowPlayingManager: NSObject {
         let songChanged = currentSongFile != lastSongFile
         
         if songChanged {
-            print("SystemNowPlayingManager: Song changed from '\(lastSongFile ?? "nil")' to '\(currentSongFile ?? "nil")'")
+            Logger.shared.log("SystemNowPlayingManager: Song changed from '\(lastSongFile ?? "nil")' to '\(currentSongFile ?? "nil")'")
             lastSongFile = currentSongFile
         }
         
         // Only fetch album artwork if the song has changed
         if songChanged {
-            print("SystemNowPlayingManager: Fetching album art for new song")
+            Logger.shared.log("SystemNowPlayingManager: Fetching album art for new song")
             // Fetch album artwork asynchronously
             albumArtManager.getAlbumArt(for: currentSong) { [weak self] albumArt in
-                print("SystemNowPlayingManager: Album art callback received - albumArt is \(albumArt != nil ? "NOT nil" : "nil")")
+                Logger.shared.log("SystemNowPlayingManager: Album art callback received - albumArt is \(albumArt != nil ? "NOT nil" : "nil")")
                 Task { @MainActor in
                     guard let self = self, self.isEnabled else { 
-                        print("SystemNowPlayingManager: Skipping album art update - self or isEnabled is nil/false")
+                        Logger.shared.log("SystemNowPlayingManager: Skipping album art update - self or isEnabled is nil/false")
                         return 
                     }
                     
@@ -166,8 +166,8 @@ public final class SystemNowPlayingManager: NSObject {
                     
                     #if os(macOS)
                     if let albumArt = albumArt {
-                        print("SystemNowPlayingManager: Setting album art in now playing info - size: \(albumArt.size)")
-                        print("SystemNowPlayingManager: Album art isValid: \(albumArt.isValid), representations: \(albumArt.representations.count)")
+                        Logger.shared.log("SystemNowPlayingManager: Setting album art in now playing info - size: \(albumArt.size)")
+                        Logger.shared.log("SystemNowPlayingManager: Album art isValid: \(albumArt.isValid), representations: \(albumArt.representations.count)")
                         
                         // Test if we can save the image to verify it's valid
                         let testPath = "/tmp/debug_album_art.jpg"
@@ -175,22 +175,22 @@ public final class SystemNowPlayingManager: NSObject {
                            let bitmapRep = NSBitmapImageRep(data: tiffData),
                            let jpegData = bitmapRep.representation(using: .jpeg, properties: [:]) {
                             try? jpegData.write(to: URL(fileURLWithPath: testPath))
-                            print("SystemNowPlayingManager: Saved debug image to \(testPath)")
+                            Logger.shared.log("SystemNowPlayingManager: Saved debug image to \(testPath)")
                         } else {
-                            print("SystemNowPlayingManager: WARNING - Could not convert image to JPEG for testing")
+                            Logger.shared.log("SystemNowPlayingManager: WARNING - Could not convert image to JPEG for testing")
                         }
                         
                         let artwork = MPMediaItemArtwork(boundsSize: albumArt.size) { requestedSize in
-                            print("SystemNowPlayingManager: MPMediaItemArtwork requested size: \(requestedSize)")
+                            Logger.shared.log("SystemNowPlayingManager: MPMediaItemArtwork requested size: \(requestedSize)")
                             // Apple recommends NOT doing expensive resizing in the handler
                             // Just return the original image
                             return albumArt
                         }
                         updatedInfo[MPMediaItemPropertyArtwork] = artwork
                         self.currentArtwork = artwork // Store for future updates
-                        print("SystemNowPlayingManager: Album artwork added to nowPlayingInfo")
+                        Logger.shared.log("SystemNowPlayingManager: Album artwork added to nowPlayingInfo")
                     } else {
-                        print("SystemNowPlayingManager: No album art found, using default icon")
+                        Logger.shared.log("SystemNowPlayingManager: No album art found, using default icon")
                         // Fallback to default music icon
                         if let musicIcon = NSImage(systemSymbolName: "music.note", accessibilityDescription: nil) {
                             let artwork = MPMediaItemArtwork(boundsSize: musicIcon.size) { requestedSize in
@@ -198,22 +198,22 @@ public final class SystemNowPlayingManager: NSObject {
                             }
                             updatedInfo[MPMediaItemPropertyArtwork] = artwork
                             self.currentArtwork = artwork // Store for future updates
-                            print("SystemNowPlayingManager: Default music icon added to nowPlayingInfo")
+                            Logger.shared.log("SystemNowPlayingManager: Default music icon added to nowPlayingInfo")
                         }
                     }
                     #endif
                     
-                    print("SystemNowPlayingManager: Updating MPNowPlayingInfoCenter with artwork")
+                    Logger.shared.log("SystemNowPlayingManager: Updating MPNowPlayingInfoCenter with artwork")
                     MPNowPlayingInfoCenter.default().nowPlayingInfo = updatedInfo
-                    print("SystemNowPlayingManager: MPNowPlayingInfoCenter updated")
+                    Logger.shared.log("SystemNowPlayingManager: MPNowPlayingInfoCenter updated")
                 }
             }
         } else {
-            print("SystemNowPlayingManager: Same song, not fetching album art but updating basic info")
+            Logger.shared.log("SystemNowPlayingManager: Same song, not fetching album art but updating basic info")
             // For same song, preserve existing artwork when updating basic info
             if let artwork = currentArtwork {
                 nowPlayingInfo[MPMediaItemPropertyArtwork] = artwork
-                print("SystemNowPlayingManager: Preserved existing artwork in update")
+                Logger.shared.log("SystemNowPlayingManager: Preserved existing artwork in update")
             }
             MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
         }
@@ -223,7 +223,7 @@ public final class SystemNowPlayingManager: NSObject {
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
         lastSongFile = nil
         currentArtwork = nil
-        print("SystemNowPlayingManager: Cleared now playing info, last song file, and artwork")
+        Logger.shared.log("SystemNowPlayingManager: Cleared now playing info, last song file, and artwork")
     }
     
     private func setupRemoteCommandCenter() {

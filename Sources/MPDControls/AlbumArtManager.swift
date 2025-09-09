@@ -63,23 +63,23 @@ public final class AlbumArtManager {
     
     public func getAlbumArt(for song: MPDClient.Song, completion: @escaping (NSImage?) -> Void) {
         guard let fileURI = song.file else {
-            print("AlbumArtManager: No file URI for song")
+            Logger.shared.log("AlbumArtManager: No file URI for song")
             completion(nil)
             return
         }
         
-        print("AlbumArtManager: Requesting album art for: \(fileURI)")
+        Logger.shared.log("AlbumArtManager: Requesting album art for: \(fileURI)")
         
         // Check memory cache first
         if let cachedImage = artworkCache[fileURI] {
-            print("AlbumArtManager: Found memory cached album art for: \(fileURI)")
+            Logger.shared.log("AlbumArtManager: Found memory cached album art for: \(fileURI)")
             completion(cachedImage)
             return
         }
         
         // Check disk cache second
         if let diskCachedImage = loadFromDiskCache(fileURI: fileURI) {
-            print("AlbumArtManager: Found disk cached album art for: \(fileURI)")
+            Logger.shared.log("AlbumArtManager: Found disk cached album art for: \(fileURI)")
             artworkCache[fileURI] = diskCachedImage // Also store in memory cache
             completion(diskCachedImage)
             return
@@ -87,42 +87,42 @@ public final class AlbumArtManager {
         
         // Avoid duplicate requests
         if currentlyFetching.contains(fileURI) {
-            print("AlbumArtManager: Already fetching album art for: \(fileURI)")
+            Logger.shared.log("AlbumArtManager: Already fetching album art for: \(fileURI)")
             completion(nil)
             return
         }
         
-        print("AlbumArtManager: Starting album art fetch for: \(fileURI)")
+        Logger.shared.log("AlbumArtManager: Starting album art fetch for: \(fileURI)")
         currentlyFetching.insert(fileURI)
         
         // Try to extract embedded album art first using ffmpeg
         extractEmbeddedAlbumArt(fileURI: fileURI) { [weak self] image in
             if let image = image {
-                print("AlbumArtManager: Successfully extracted embedded album art for: \(fileURI)")
+                Logger.shared.log("AlbumArtManager: Successfully extracted embedded album art for: \(fileURI)")
                 self?.artworkCache[fileURI] = image
                 self?.saveToDiskCache(image: image, fileURI: fileURI)
                 self?.currentlyFetching.remove(fileURI)
                 completion(image)
             } else {
-                print("AlbumArtManager: No embedded album art found, trying local cover files for: \(fileURI)")
+                Logger.shared.log("AlbumArtManager: No embedded album art found, trying local cover files for: \(fileURI)")
                 // Fallback to looking for cover files in the directory
                 self?.findLocalCoverArt(fileURI: fileURI) { [weak self] image in
                     if let image = image {
-                        print("AlbumArtManager: Found local cover art for: \(fileURI)")
+                        Logger.shared.log("AlbumArtManager: Found local cover art for: \(fileURI)")
                         self?.artworkCache[fileURI] = image
                         self?.saveToDiskCache(image: image, fileURI: fileURI)
                         self?.currentlyFetching.remove(fileURI)
                         completion(image)
                     } else {
-                        print("AlbumArtManager: No local cover art found, trying online search for: \(fileURI)")
+                        Logger.shared.log("AlbumArtManager: No local cover art found, trying online search for: \(fileURI)")
                         // Final fallback: try online search
                         self?.fetchOnlineAlbumArt(for: song) { [weak self] onlineImage in
                             if let onlineImage = onlineImage {
-                                print("AlbumArtManager: Found online album art for: \(fileURI)")
+                                Logger.shared.log("AlbumArtManager: Found online album art for: \(fileURI)")
                                 self?.artworkCache[fileURI] = onlineImage
                                 self?.saveToDiskCache(image: onlineImage, fileURI: fileURI)
                             } else {
-                                print("AlbumArtManager: No album art found anywhere for: \(fileURI)")
+                                Logger.shared.log("AlbumArtManager: No album art found anywhere for: \(fileURI)")
                             }
                             self?.currentlyFetching.remove(fileURI)
                             completion(onlineImage)
@@ -135,17 +135,17 @@ public final class AlbumArtManager {
     
     private func extractEmbeddedAlbumArt(fileURI: String, completion: @escaping (NSImage?) -> Void) {
         guard let musicDir = musicDirectory else {
-            print("AlbumArtManager: No music directory configured")
+            Logger.shared.log("AlbumArtManager: No music directory configured")
             completion(nil)
             return
         }
         
         let fullPath = URL(fileURLWithPath: musicDir).appendingPathComponent(fileURI).path
-        print("AlbumArtManager: Trying to extract from: \(fullPath)")
+        Logger.shared.log("AlbumArtManager: Trying to extract from: \(fullPath)")
         
         // Check if file exists
         guard FileManager.default.fileExists(atPath: fullPath) else {
-            print("AlbumArtManager: Music file not found at: \(fullPath)")
+            Logger.shared.log("AlbumArtManager: Music file not found at: \(fullPath)")
             completion(nil)
             return
         }
@@ -170,34 +170,34 @@ public final class AlbumArtManager {
         
         process.terminationHandler = { process in
             DispatchQueue.main.async {
-                print("AlbumArtManager: ffmpeg process terminated with exit code: \(process.terminationStatus)")
+                Logger.shared.log("AlbumArtManager: ffmpeg process terminated with exit code: \(process.terminationStatus)")
                 
                 // Read error output
                 let errorData = pipe.fileHandleForReading.readDataToEndOfFile()
                 if !errorData.isEmpty {
                     let errorString = String(data: errorData, encoding: .utf8) ?? "Unable to decode error"
-                    print("AlbumArtManager: ffmpeg stderr: \(errorString)")
+                    Logger.shared.log("AlbumArtManager: ffmpeg stderr: \(errorString)")
                 }
                 
                 // Check if the extraction was successful
                 if FileManager.default.fileExists(atPath: tempFile) {
-                    print("AlbumArtManager: Temporary album art file created: \(tempFile)")
+                    Logger.shared.log("AlbumArtManager: Temporary album art file created: \(tempFile)")
                     if let image = NSImage(contentsOfFile: tempFile) {
-                        print("AlbumArtManager: Successfully loaded extracted album art")
+                        Logger.shared.log("AlbumArtManager: Successfully loaded extracted album art")
                         completion(image)
                     } else {
-                        print("AlbumArtManager: Failed to load image from temporary file")
+                        Logger.shared.log("AlbumArtManager: Failed to load image from temporary file")
                         completion(nil)
                     }
                     // Clean up temp file
                     do {
                         try FileManager.default.removeItem(atPath: tempFile)
-                        print("AlbumArtManager: Cleaned up temporary file")
+                        Logger.shared.log("AlbumArtManager: Cleaned up temporary file")
                     } catch {
-                        print("AlbumArtManager: Failed to clean up temporary file: \(error)")
+                        Logger.shared.log("AlbumArtManager: Failed to clean up temporary file: \(error)")
                     }
                 } else {
-                    print("AlbumArtManager: No temporary album art file created by ffmpeg")
+                    Logger.shared.log("AlbumArtManager: No temporary album art file created by ffmpeg")
                     completion(nil)
                 }
             }
@@ -206,7 +206,7 @@ public final class AlbumArtManager {
         // Check if ffmpeg exists, if not, skip this method
         guard FileManager.default.fileExists(atPath: "/usr/local/bin/ffmpeg") ||
               FileManager.default.fileExists(atPath: "/opt/homebrew/bin/ffmpeg") else {
-            print("AlbumArtManager: ffmpeg not found in common locations")
+            Logger.shared.log("AlbumArtManager: ffmpeg not found in common locations")
             completion(nil)
             return
         }
@@ -214,23 +214,23 @@ public final class AlbumArtManager {
         // Update ffmpeg path if using homebrew
         if FileManager.default.fileExists(atPath: "/opt/homebrew/bin/ffmpeg") {
             process.launchPath = "/opt/homebrew/bin/ffmpeg"
-            print("AlbumArtManager: Using Homebrew ffmpeg at /opt/homebrew/bin/ffmpeg")
+            Logger.shared.log("AlbumArtManager: Using Homebrew ffmpeg at /opt/homebrew/bin/ffmpeg")
         } else {
-            print("AlbumArtManager: Using system ffmpeg at /usr/local/bin/ffmpeg")
+            Logger.shared.log("AlbumArtManager: Using system ffmpeg at /usr/local/bin/ffmpeg")
         }
         
-        print("AlbumArtManager: Executing ffmpeg to extract album art")
+        Logger.shared.log("AlbumArtManager: Executing ffmpeg to extract album art")
         do {
             try process.run()
         } catch {
-            print("AlbumArtManager: Failed to launch ffmpeg: \(error)")
+            Logger.shared.log("AlbumArtManager: Failed to launch ffmpeg: \(error)")
             completion(nil)
         }
     }
     
     private func findLocalCoverArt(fileURI: String, completion: @escaping (NSImage?) -> Void) {
         guard let musicDir = musicDirectory else {
-            print("AlbumArtManager: No music directory configured for local cover art search")
+            Logger.shared.log("AlbumArtManager: No music directory configured for local cover art search")
             completion(nil)
             return
         }
@@ -238,7 +238,7 @@ public final class AlbumArtManager {
         // Get the directory containing the music file
         let fileURL = URL(fileURLWithPath: fileURI)
         let directoryPath = URL(fileURLWithPath: musicDir).appendingPathComponent(fileURL.deletingLastPathComponent().path)
-        print("AlbumArtManager: Searching for local cover art in: \(directoryPath.path)")
+        Logger.shared.log("AlbumArtManager: Searching for local cover art in: \(directoryPath.path)")
         
         // Common cover art filenames
         let coverFilenames = [
@@ -251,18 +251,18 @@ public final class AlbumArtManager {
         for filename in coverFilenames {
             let coverPath = directoryPath.appendingPathComponent(filename).path
             if FileManager.default.fileExists(atPath: coverPath) {
-                print("AlbumArtManager: Found potential cover art: \(coverPath)")
+                Logger.shared.log("AlbumArtManager: Found potential cover art: \(coverPath)")
                 if let image = NSImage(contentsOfFile: coverPath) {
-                    print("AlbumArtManager: Successfully loaded cover art: \(filename)")
+                    Logger.shared.log("AlbumArtManager: Successfully loaded cover art: \(filename)")
                     completion(image)
                     return
                 } else {
-                    print("AlbumArtManager: Failed to load image from: \(filename)")
+                    Logger.shared.log("AlbumArtManager: Failed to load image from: \(filename)")
                 }
             }
         }
         
-        print("AlbumArtManager: No local cover art files found")
+        Logger.shared.log("AlbumArtManager: No local cover art files found")
         completion(nil)
     }
     
@@ -274,14 +274,14 @@ public final class AlbumArtManager {
     private func fetchOnlineAlbumArt(for song: MPDClient.Song, completion: @escaping (NSImage?) -> Void) {
         // Check if we have network connectivity
         guard isNetworkAvailable() else {
-            print("AlbumArtManager: No network connectivity available")
+            Logger.shared.log("AlbumArtManager: No network connectivity available")
             completion(nil)
             return
         }
         
         // Build search query from song metadata
         guard let artist = song.artist, let album = song.album else {
-            print("AlbumArtManager: Missing artist or album metadata for online search")
+            Logger.shared.log("AlbumArtManager: Missing artist or album metadata for online search")
             completion(nil)
             return
         }
@@ -289,30 +289,30 @@ public final class AlbumArtManager {
         // URL encode the search query
         let query = "artist:\"\(artist)\" album:\"\(album)\""
         guard let encodedQuery = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else {
-            print("AlbumArtManager: Failed to encode search query")
+            Logger.shared.log("AlbumArtManager: Failed to encode search query")
             completion(nil)
             return
         }
         
         let urlString = "https://api.deezer.com/search/album?q=\(encodedQuery)&limit=1"
         guard let url = URL(string: urlString) else {
-            print("AlbumArtManager: Invalid Deezer API URL")
+            Logger.shared.log("AlbumArtManager: Invalid Deezer API URL")
             completion(nil)
             return
         }
         
-        print("AlbumArtManager: Searching Deezer API: \(urlString)")
+        Logger.shared.log("AlbumArtManager: Searching Deezer API: \(urlString)")
         
         // Make the API request
         let task = URLSession.shared.dataTask(with: url) { data, response, error in
             if let error = error {
-                print("AlbumArtManager: Deezer API request failed: \(error)")
+                Logger.shared.log("AlbumArtManager: Deezer API request failed: \(error)")
                 completion(nil)
                 return
             }
             
             guard let data = data else {
-                print("AlbumArtManager: No data received from Deezer API")
+                Logger.shared.log("AlbumArtManager: No data received from Deezer API")
                 completion(nil)
                 return
             }
@@ -324,16 +324,16 @@ public final class AlbumArtManager {
                    let firstAlbum = albums.first,
                    let coverURL = firstAlbum["cover_xl"] as? String {
                     
-                    print("AlbumArtManager: Found album art URL: \(coverURL)")
+                    Logger.shared.log("AlbumArtManager: Found album art URL: \(coverURL)")
                     
                     // Download the image
                     self.downloadImage(from: coverURL, completion: completion)
                 } else {
-                    print("AlbumArtManager: No album art found in Deezer API response")
+                    Logger.shared.log("AlbumArtManager: No album art found in Deezer API response")
                     completion(nil)
                 }
             } catch {
-                print("AlbumArtManager: Failed to parse Deezer API response: \(error)")
+                Logger.shared.log("AlbumArtManager: Failed to parse Deezer API response: \(error)")
                 completion(nil)
             }
         }
@@ -349,18 +349,18 @@ public final class AlbumArtManager {
         
         let task = URLSession.shared.dataTask(with: url) { data, response, error in
             if let error = error {
-                print("AlbumArtManager: Image download failed: \(error)")
+                Logger.shared.log("AlbumArtManager: Image download failed: \(error)")
                 completion(nil)
                 return
             }
             
             guard let data = data, let image = NSImage(data: data) else {
-                print("AlbumArtManager: Failed to create image from downloaded data")
+                Logger.shared.log("AlbumArtManager: Failed to create image from downloaded data")
                 completion(nil)
                 return
             }
             
-            print("AlbumArtManager: Successfully downloaded album art image")
+            Logger.shared.log("AlbumArtManager: Successfully downloaded album art image")
             DispatchQueue.main.async {
                 completion(image)
             }
@@ -398,15 +398,15 @@ public final class AlbumArtManager {
         guard let tiffData = image.tiffRepresentation,
               let bitmap = NSBitmapImageRep(data: tiffData),
               let jpegData = bitmap.representation(using: .jpeg, properties: [.compressionFactor: 0.8]) else {
-            print("AlbumArtManager: Failed to convert image to JPEG for disk cache")
+            Logger.shared.log("AlbumArtManager: Failed to convert image to JPEG for disk cache")
             return
         }
         
         do {
             try jpegData.write(to: cacheURL)
-            print("AlbumArtManager: Saved image to disk cache: \(cacheKey)")
+            Logger.shared.log("AlbumArtManager: Saved image to disk cache: \(cacheKey)")
         } catch {
-            print("AlbumArtManager: Failed to save image to disk cache: \(error)")
+            Logger.shared.log("AlbumArtManager: Failed to save image to disk cache: \(error)")
         }
     }
     
@@ -424,13 +424,13 @@ public final class AlbumArtManager {
             if let modificationDate = attributes[.modificationDate] as? Date {
                 let daysSinceModification = Date().timeIntervalSince(modificationDate) / (24 * 60 * 60)
                 if daysSinceModification > 30 {
-                    print("AlbumArtManager: Disk cache file expired, removing: \(cacheKey)")
+                    Logger.shared.log("AlbumArtManager: Disk cache file expired, removing: \(cacheKey)")
                     try FileManager.default.removeItem(at: cacheURL)
                     return nil
                 }
             }
         } catch {
-            print("AlbumArtManager: Failed to check cache file attributes: \(error)")
+            Logger.shared.log("AlbumArtManager: Failed to check cache file attributes: \(error)")
         }
         
         return NSImage(contentsOf: cacheURL)
@@ -442,9 +442,9 @@ public final class AlbumArtManager {
             for url in contents {
                 try FileManager.default.removeItem(at: url)
             }
-            print("AlbumArtManager: Disk cache cleared")
+            Logger.shared.log("AlbumArtManager: Disk cache cleared")
         } catch {
-            print("AlbumArtManager: Failed to clear disk cache: \(error)")
+            Logger.shared.log("AlbumArtManager: Failed to clear disk cache: \(error)")
         }
     }
 }
