@@ -28,10 +28,6 @@ let package = Package(
     ],
     products: macOSProducts + [
         .executable(
-            name: "MPDControlsCLI",
-            targets: ["MPDControlsCLI"]
-        ),
-        .executable(
             name: "MPDControlsTests",
             targets: ["MPDControlsTests"]
         ),
@@ -45,10 +41,6 @@ let package = Package(
             name: "MPDControlsCore",
             dependencies: [],
             path: "Sources/MPDControlsCore"
-        ),
-        .executableTarget(
-            name: "MPDControlsCLI",
-            dependencies: ["MPDControlsCore"]
         ),
         .executableTarget(
             name: "MPDControlsTests",
