@@ -438,6 +438,13 @@ public final class MPDClient: ObservableObject {
             Task { @MainActor in
                 self?.updateStatus()
                 self?.updateCurrentSong()
+                // Schedule additional update after brief delay to ensure UI reflects change
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    Task { @MainActor in
+                        self?.updateStatus()
+                        self?.updateCurrentSong()
+                    }
+                }
             }
         }
     }
@@ -446,6 +453,14 @@ public final class MPDClient: ObservableObject {
         sendCommand("pause") { [weak self] _ in
             Task { @MainActor in
                 self?.updateStatus()
+                self?.updateCurrentSong()
+                // Schedule additional update after brief delay to ensure UI reflects change
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    Task { @MainActor in
+                        self?.updateStatus()
+                        self?.updateCurrentSong()
+                    }
+                }
             }
         }
     }
@@ -474,6 +489,13 @@ public final class MPDClient: ObservableObject {
             Task { @MainActor in
                 self?.updateStatus()
                 self?.updateCurrentSong()
+                // Schedule additional update after brief delay to ensure UI reflects change
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    Task { @MainActor in
+                        self?.updateStatus()
+                        self?.updateCurrentSong()
+                    }
+                }
             }
         }
     }
@@ -483,6 +505,13 @@ public final class MPDClient: ObservableObject {
             Task { @MainActor in
                 self?.updateStatus()
                 self?.updateCurrentSong()
+                // Schedule additional update after brief delay to ensure UI reflects change
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    Task { @MainActor in
+                        self?.updateStatus()
+                        self?.updateCurrentSong()
+                    }
+                }
             }
         }
     }
@@ -1162,16 +1191,24 @@ public final class MPDClient: ObservableObject {
             updateElapsedTimeFromMPD(elapsed)
             
             // Update current song with new elapsed time while preserving other info
+            // Only update if we're not playing (to avoid overriding interpolated values)
+            // or if this is a significant change (indicating a seek or song change)
             if var updatedSong = currentSong {
-                updatedSong = Song(
-                    artist: updatedSong.artist,
-                    title: updatedSong.title,
-                    album: updatedSong.album,
-                    file: updatedSong.file,
-                    duration: updatedSong.duration,
-                    elapsed: elapsed
-                )
-                currentSong = updatedSong
+                let shouldUpdate = playerState != .play || 
+                                  updatedSong.elapsed == nil ||
+                                  abs((updatedSong.elapsed ?? 0) - elapsed) > 1.0
+                
+                if shouldUpdate {
+                    updatedSong = Song(
+                        artist: updatedSong.artist,
+                        title: updatedSong.title,
+                        album: updatedSong.album,
+                        file: updatedSong.file,
+                        duration: updatedSong.duration,
+                        elapsed: elapsed
+                    )
+                    currentSong = updatedSong
+                }
             }
         }
         
@@ -1181,6 +1218,10 @@ public final class MPDClient: ObservableObject {
             case .play:
                 startElapsedTimeTimer()
             case .pause, .stop, .stopped:
+                // When pausing/stopping, capture the current interpolated elapsed time
+                if oldPlayerState == .play {
+                    updateInterpolatedElapsedTime()
+                }
                 stopElapsedTimeTimer()
             }
         }
@@ -1211,13 +1252,16 @@ public final class MPDClient: ObservableObject {
             updateElapsedTimeFromMPD(elapsed)
         }
         
+        // Preserve existing elapsed time if not provided in currentsong response
+        let finalElapsed = elapsed ?? currentSong?.elapsed
+        
         currentSong = Song(
             artist: data["Artist"],
             title: data["Title"],
             album: data["Album"],
             file: data["file"],
             duration: duration,
-            elapsed: elapsed
+            elapsed: finalElapsed
         )
     }
 }
