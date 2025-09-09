@@ -201,15 +201,10 @@ struct QueueItemRow: View {
     }
 }
 
-// Extension to MPDClient for queue item structure
-extension MPDClient {
-    public struct QueueItem: Identifiable, Equatable {
-        public let id: Int
-        public let position: Int
-        public let file: String?
-        public let title: String?
-        public let artist: String?
-        public let album: String?
-        public let duration: TimeInterval?
+// Note: QueueItem struct is defined in MPDClient.swift
+// Making QueueItem Equatable
+extension MPDClient.QueueItem: Equatable {
+    public static func == (lhs: MPDClient.QueueItem, rhs: MPDClient.QueueItem) -> Bool {
+        return lhs.id == rhs.id && lhs.position == rhs.position
     }
 }

@@ -105,7 +105,7 @@ class AppState: ObservableObject {
     
     func loadSettings() {
         settings.updateInterval = UserDefaults.standard.double(forKey: "mpd_update_interval") 
-        if settings.updateInterval <= 0 { settings.updateInterval = 10.0 }
+        if settings.updateInterval <= 0 { settings.updateInterval = 2.0 }
         
         if UserDefaults.standard.object(forKey: "mpd_show_notifications") != nil {
             settings.showNotifications = UserDefaults.standard.bool(forKey: "mpd_show_notifications")
@@ -170,6 +170,7 @@ class AppState: ObservableObject {
             Task { @MainActor in
                 if self.mpdClient.connectionStatus == .connected {
                     self.mpdClient.updateStatus()
+                    // Still periodically update current song for streaming metadata changes
                     self.mpdClient.updateCurrentSong()
                     self.notificationManager?.checkForSongChange()
                     self.systemNowPlayingManager?.updateNowPlayingInfo()
@@ -200,7 +201,7 @@ class AppState: ObservableObject {
 }
 
 struct Settings {
-    var updateInterval: TimeInterval = 10.0  // Fallback polling (idle mode handles real-time updates)
+    var updateInterval: TimeInterval = 2.0  // More frequent polling for better elapsed time tracking
     var showNotifications: Bool = true
     var autoReconnect: Bool = true
     var notificationSound: Bool = false

@@ -15,6 +15,12 @@ public final class NotificationManager: NSObject {
     }
     
     private func setupNotifications() {
+        // Only setup notifications if we're running in an app context (not command line)
+        guard Bundle.main.bundleIdentifier != nil else {
+            print("Skipping notification setup in command-line context")
+            return
+        }
+        
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, error in
             Task { @MainActor in
                 self.isEnabled = granted
@@ -69,6 +75,9 @@ public final class NotificationManager: NSObject {
             trigger: nil // Show immediately
         )
         
+        // Only send notifications if we're in an app context
+        guard Bundle.main.bundleIdentifier != nil else { return }
+        
         UNUserNotificationCenter.current().add(request) { error in
             if let error = error {
                 print("Failed to show notification: \(error)")
@@ -84,7 +93,7 @@ public final class NotificationManager: NSObject {
     }
 }
 
-extension NotificationManager: UNUserNotificationCenterDelegate {
+extension NotificationManager: @preconcurrency UNUserNotificationCenterDelegate {
     public func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification,

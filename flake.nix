@@ -45,6 +45,7 @@
             git
             gnumake
             pkg-config
+            tokei
           ] ++ darwinPackages ++ linuxPackages;
           
           LD_LIBRARY_PATH = if isLinux then

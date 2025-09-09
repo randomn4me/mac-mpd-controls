@@ -1,26 +1,9 @@
 import Foundation
+import MPDControlsCore
 
 #if canImport(Network)
 import Network
 #endif
-
-// Protocol for cross-platform network connection
-protocol NetworkConnectionProtocol {
-    func connect(host: String, port: UInt16)
-    func disconnect()
-    func send(data: Data, completion: @escaping (Error?) -> Void)
-    func receive(completion: @escaping (Data?, Error?) -> Void)
-    var stateUpdateHandler: ((ConnectionState) -> Void)? { get set }
-}
-
-enum ConnectionState {
-    case setup
-    case waiting(Error)
-    case preparing
-    case ready
-    case failed(Error)
-    case cancelled
-}
 
 #if canImport(Network)
 // macOS implementation using Network framework
@@ -63,6 +46,10 @@ class AppleNetworkConnection: NetworkConnectionProtocol {
     func disconnect() {
         connection?.cancel()
         connection = nil
+    }
+    
+    func cancel() {
+        connection?.cancel()
     }
     
     func send(data: Data, completion: @escaping (Error?) -> Void) {
@@ -135,6 +122,11 @@ class FoundationNetworkConnection: NetworkConnectionProtocol {
         stateUpdateHandler?(.cancelled)
     }
     
+    func cancel() {
+        inputStream?.close()
+        outputStream?.close()
+    }
+    
     func send(data: Data, completion: @escaping (Error?) -> Void) {
         queue.async { [weak self] in
             guard let outputStream = self?.outputStream else {
@@ -180,7 +172,7 @@ class FoundationNetworkConnection: NetworkConnectionProtocol {
             
             // No bytes available yet, schedule another receive
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                self.receive(completion: completion)
+                self?.receive(completion: completion)
             }
         }
     }

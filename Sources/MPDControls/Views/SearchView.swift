@@ -216,14 +216,12 @@ struct SearchResultRow: View {
     }
 }
 
-// Extension for search result structure
-extension MPDClient {
-    public struct SearchResult: Identifiable, Equatable {
-        public let id = UUID()
-        public let file: String
-        public let title: String?
-        public let artist: String?
-        public let album: String?
-        public let duration: TimeInterval?
+// Note: SearchResult struct is defined in MPDClient.swift
+// Making SearchResult Identifiable and Equatable
+extension MPDClient.SearchResult: Identifiable, Equatable {
+    public var id: String { file }
+    
+    public static func == (lhs: MPDClient.SearchResult, rhs: MPDClient.SearchResult) -> Bool {
+        return lhs.file == rhs.file
     }
 }

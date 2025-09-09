@@ -7,6 +7,8 @@ struct SettingsView: View {
     @State private var showNotifications: Bool = false
     @State private var autoReconnect: Bool = true
     @State private var updateInterval: Double = 5.0
+    @State private var useSystemNowPlaying: Bool = true
+    @State private var showSeparateMenuBar: Bool = false
     @Environment(\.dismiss) private var dismiss
     
     var body: some View {
@@ -57,6 +59,18 @@ struct SettingsView: View {
                         Text("\(Int(updateInterval))s")
                             .frame(width: 30)
                     }
+                }
+                .padding()
+            }
+            
+            GroupBox("Interface") {
+                VStack(alignment: .leading, spacing: 12) {
+                    Toggle("Use system Now Playing controls", isOn: $useSystemNowPlaying)
+                        .help("Integrate with macOS Now Playing menu bar item")
+                    
+                    Toggle("Show separate menu bar icon", isOn: $showSeparateMenuBar)
+                        .help("Show MPD Controls as separate menu bar item")
+                        .disabled(!useSystemNowPlaying) // Only allow if system controls are enabled
                 }
                 .padding()
             }
@@ -115,6 +129,8 @@ struct SettingsView: View {
         showNotifications = appState.settings.showNotifications
         autoReconnect = appState.settings.autoReconnect
         updateInterval = appState.settings.updateInterval
+        useSystemNowPlaying = appState.settings.useSystemNowPlaying
+        showSeparateMenuBar = appState.settings.showSeparateMenuBar
     }
     
     private func applySettings() {
@@ -133,9 +149,17 @@ struct SettingsView: View {
         appState.settings.showNotifications = showNotifications
         appState.settings.autoReconnect = autoReconnect
         appState.settings.updateInterval = updateInterval
+        appState.settings.useSystemNowPlaying = useSystemNowPlaying
+        appState.settings.showSeparateMenuBar = showSeparateMenuBar
         
         // Update notification manager
         appState.notificationManager?.setEnabled(showNotifications)
+        
+        // Update system now playing manager
+        appState.systemNowPlayingManager?.setEnabled(useSystemNowPlaying)
+        
+        // Save settings to UserDefaults
+        appState.saveSettings()
         
         // Update MPD connection
         appState.updateMPDConnection(host: host.isEmpty ? "127.0.0.1" : host, port: portNumber)

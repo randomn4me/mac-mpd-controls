@@ -24,6 +24,12 @@ public final class MPDClient: ObservableObject {
     private var reconnectTimer: Timer?
     private var isIdling = false
     private var shouldIdle = true
+    private var lastKnownSongPosition: Int? = nil
+    
+    // Client-side elapsed time interpolation
+    private var lastElapsedTimeFromMPD: TimeInterval = 0
+    private var lastElapsedTimeUpdate: Date = Date()
+    private var elapsedTimeTimer: Timer?
     
     public enum ConnectionStatus: Equatable {
         case disconnected
@@ -107,6 +113,7 @@ public final class MPDClient: ObservableObject {
     
     public func disconnect() {
         stopIdleMode()
+        stopElapsedTimeTimer()
         connection?.disconnect()
         connection = nil
         commandQueue.removeAll()
@@ -114,6 +121,63 @@ public final class MPDClient: ObservableObject {
         receiveBuffer = ""
         DispatchQueue.main.async {
             self.connectionStatus = .disconnected
+        }
+    }
+    
+    // MARK: - Client-side Elapsed Time Interpolation
+    
+    private func startElapsedTimeTimer() {
+        stopElapsedTimeTimer()
+        guard playerState == .play else { return }
+        
+        elapsedTimeTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.updateInterpolatedElapsedTime()
+            }
+        }
+    }
+    
+    private func stopElapsedTimeTimer() {
+        elapsedTimeTimer?.invalidate()
+        elapsedTimeTimer = nil
+    }
+    
+    private func updateInterpolatedElapsedTime() {
+        guard playerState == .play,
+              let updatedSong = currentSong else { return }
+        
+        let timeSinceLastUpdate = Date().timeIntervalSince(lastElapsedTimeUpdate)
+        let interpolatedElapsed = lastElapsedTimeFromMPD + timeSinceLastUpdate
+        
+        // Clamp elapsed time to not exceed duration
+        let clampedElapsed: TimeInterval
+        if let duration = updatedSong.duration {
+            clampedElapsed = min(interpolatedElapsed, duration)
+        } else {
+            clampedElapsed = interpolatedElapsed
+        }
+        
+        // Update current song with interpolated elapsed time
+        let newSong = Song(
+            artist: updatedSong.artist,
+            title: updatedSong.title,
+            album: updatedSong.album,
+            file: updatedSong.file,
+            duration: updatedSong.duration,
+            elapsed: clampedElapsed
+        )
+        currentSong = newSong
+    }
+    
+    private func updateElapsedTimeFromMPD(_ elapsed: TimeInterval) {
+        lastElapsedTimeFromMPD = elapsed
+        lastElapsedTimeUpdate = Date()
+        
+        // Start/restart timer if playing
+        if playerState == .play {
+            startElapsedTimeTimer()
+        } else {
+            stopElapsedTimeTimer()
         }
     }
     
@@ -1045,6 +1109,8 @@ public final class MPDClient: ObservableObject {
     // MARK: - Response Parsing
     
     private func parseStatusResponse(_ data: [String: String]) {
+        let oldPlayerState = playerState
+        
         if let state = data["state"] {
             switch state {
             case "play":
@@ -1090,11 +1156,60 @@ public final class MPDClient: ObservableObject {
         if let crossfadeStr = data["xfade"], let xfade = Int(crossfadeStr) {
             crossfade = xfade
         }
+        
+        // Update elapsed time if available in status response
+        if let elapsedStr = data["elapsed"], let elapsed = TimeInterval(elapsedStr) {
+            updateElapsedTimeFromMPD(elapsed)
+            
+            // Update current song with new elapsed time while preserving other info
+            if var updatedSong = currentSong {
+                updatedSong = Song(
+                    artist: updatedSong.artist,
+                    title: updatedSong.title,
+                    album: updatedSong.album,
+                    file: updatedSong.file,
+                    duration: updatedSong.duration,
+                    elapsed: elapsed
+                )
+                currentSong = updatedSong
+            }
+        }
+        
+        // Handle player state changes
+        if oldPlayerState != playerState {
+            switch playerState {
+            case .play:
+                startElapsedTimeTimer()
+            case .pause, .stop, .stopped:
+                stopElapsedTimeTimer()
+            }
+        }
+        
+        // Check if song position has changed (indicates song change)
+        if let songposStr = data["song"], let songpos = Int(songposStr) {
+            if songpos != lastKnownSongPosition {
+                lastKnownSongPosition = songpos
+                // Song changed, update current song info
+                updateCurrentSong()
+            }
+        }
+        
+        // For streaming sources or other cases where title might change during playback,
+        // periodically refresh song metadata if we're playing
+        if playerState == .play && currentSong != nil {
+            // Check if enough time has passed since last metadata update (avoid too frequent calls)
+            // This will be handled by periodic calls to updateCurrentSong() from the timer
+        }
     }
     
     private func parseCurrentSongResponse(_ data: [String: String]) {
         let duration = data["Time"].flatMap { TimeInterval($0) }
         let elapsed = data["elapsed"].flatMap { TimeInterval($0) }
+        
+        // Update elapsed time tracking if available
+        if let elapsed = elapsed {
+            updateElapsedTimeFromMPD(elapsed)
+        }
         
         currentSong = Song(
             artist: data["Artist"],

@@ -37,10 +37,14 @@ public class SimpleMPDClient {
                                           &readStream,
                                           &writeStream)
         
-        guard let inputStream = readStream?.takeRetainedValue(),
-              let outputStream = writeStream?.takeRetainedValue() else {
+        guard let cfInputStream = readStream?.takeRetainedValue(),
+              let cfOutputStream = writeStream?.takeRetainedValue() else {
             return false
         }
+        
+        // Cast CFStreams to InputStream/OutputStream
+        let inputStream = cfInputStream as InputStream
+        let outputStream = cfOutputStream as OutputStream
         
         inputStream.open()
         outputStream.open()
