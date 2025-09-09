@@ -1,5 +1,8 @@
 import Foundation
 import MPDControlsCore
+#if os(macOS)
+import AppKit
+#endif
 
 @MainActor
 public final class MPDClient: ObservableObject {
@@ -19,6 +22,8 @@ public final class MPDClient: ObservableObject {
     private var connectionRetryCount = 0
     private let maxRetryCount = 3
     private var reconnectTimer: Timer?
+    private var isIdling = false
+    private var shouldIdle = true
     
     public enum ConnectionStatus: Equatable {
         case disconnected
@@ -101,6 +106,7 @@ public final class MPDClient: ObservableObject {
     }
     
     public func disconnect() {
+        stopIdleMode()
         connection?.disconnect()
         connection = nil
         commandQueue.removeAll()
@@ -120,6 +126,10 @@ public final class MPDClient: ObservableObject {
                 self?.startReceiving()
                 self?.updateStatus()
                 self?.updateCurrentSong()
+                // Start idle mode for real-time updates
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    self?.startIdleMode()
+                }
             case .failed(let error):
                 self?.connectionStatus = .failed(error.localizedDescription)
                 self?.connection?.disconnect()
@@ -166,7 +176,15 @@ public final class MPDClient: ObservableObject {
                 let result = parseResponse(response)
                 command.completion?(.success(result))
                 
-                processNextCommand()
+                // Process next command or restart idle mode
+                if !commandQueue.isEmpty {
+                    processNextCommand()
+                } else if shouldIdle && connectionStatus == .connected {
+                    // No more commands, restart idle mode
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        self.startIdleMode()
+                    }
+                }
             } else {
                 // Initial connection response
                 if response.hasPrefix("OK MPD") {
@@ -198,35 +216,60 @@ public final class MPDClient: ObservableObject {
     
     // MARK: - Command Execution
     
-    private func sendCommand(_ command: String, completion: (@Sendable (Result<[String: String], Error>) -> Void)? = nil) {
+    private func sendCommand(_ command: String, notifyOnly: Bool = false, completion: (@Sendable (Result<[String: String], Error>) -> Void)? = nil) {
+        print("MPDClient: sendCommand called with: '\(command)', connection status: \(connectionStatus)")
         guard connectionStatus == .connected else {
+            print("MPDClient: Command '\(command)' failed - not connected")
             completion?(.failure(NSError(domain: "MPDClient", code: 1, userInfo: [NSLocalizedDescriptionKey: "Not connected"])))
             return
         }
         
-        let mpdCommand = MPDCommand(command: command, completion: completion)
-        commandQueue.append(mpdCommand)
-        
-        if !isProcessingCommand {
-            processNextCommand()
+        // If we're idling and this isn't a notify-only command, we need to interrupt idle
+        if isIdling && !notifyOnly {
+            print("MPDClient: Command '\(command)' - interrupting idle mode")
+            stopIdleMode()
+            // Give the noidle command time to process
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+                let mpdCommand = MPDCommand(command: command, completion: completion)
+                self?.commandQueue.append(mpdCommand)
+                print("MPDClient: Command '\(command)' queued after idle interruption")
+                if !(self?.isProcessingCommand ?? false) {
+                    self?.processNextCommand()
+                }
+            }
+        } else {
+            let mpdCommand = MPDCommand(command: command, completion: completion)
+            commandQueue.append(mpdCommand)
+            print("MPDClient: Command '\(command)' queued directly")
+            
+            if !isProcessingCommand {
+                processNextCommand()
+            }
         }
     }
     
     private func processNextCommand() {
-        guard !isProcessingCommand, !commandQueue.isEmpty else { return }
+        guard !isProcessingCommand, !commandQueue.isEmpty else { 
+            print("MPDClient: processNextCommand - isProcessing: \(isProcessingCommand), queueEmpty: \(commandQueue.isEmpty)")
+            return 
+        }
         
         isProcessingCommand = true
         let command = commandQueue.first!
+        print("MPDClient: Processing command: '\(command.command)'")
         
         let data = (command.command + "\n").data(using: .utf8)!
         connection?.send(data: data) { [weak self] error in
             if let error = error {
+                print("MPDClient: Command '\(command.command)' send failed with error: \(error)")
                 Task { @MainActor in
                     self?.commandQueue.removeFirst()
                     self?.isProcessingCommand = false
                     command.completion?(.failure(error))
                     self?.processNextCommand()
                 }
+            } else {
+                print("MPDClient: Command '\(command.command)' sent successfully, waiting for response")
             }
         }
     }
@@ -251,6 +294,79 @@ public final class MPDClient: ObservableObject {
                 }
             }
         }
+    }
+    
+    // MARK: - Idle Mode for Real-time Updates
+    
+    private func startIdleMode() {
+        guard connectionStatus == .connected && !isIdling && shouldIdle else { return }
+        
+        // Send idle command to wait for changes
+        isIdling = true
+        sendCommand("idle player mixer playlist options", notifyOnly: true) { [weak self] result in
+            Task { @MainActor in
+                self?.isIdling = false
+                
+                if case .success(let data) = result {
+                    // Process the changed subsystems
+                    self?.processIdleResponse(data)
+                    
+                    // Restart idle mode if still connected
+                    if self?.connectionStatus == .connected && self?.shouldIdle == true {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            self?.startIdleMode()
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    private func stopIdleMode() {
+        if isIdling {
+            print("MPDClient: Stopping idle mode")
+            shouldIdle = false
+            isIdling = false
+            
+            // Send noidle directly without queueing to interrupt the current idle command
+            let data = "noidle\n".data(using: .utf8)!
+            connection?.send(data: data) { error in
+                print("MPDClient: noidle sent directly, error: \(String(describing: error))")
+            }
+        }
+    }
+    
+    private func processIdleResponse(_ data: [String: String]) {
+        // Parse which subsystems changed
+        var changedSubsystems: Set<String> = []
+        
+        for (key, value) in data {
+            if key == "changed" {
+                changedSubsystems.insert(value)
+            }
+        }
+        
+        // Update relevant data based on what changed
+        if changedSubsystems.contains("player") {
+            updateStatus()
+            updateCurrentSong()
+        }
+        
+        if changedSubsystems.contains("mixer") {
+            updateStatus()
+        }
+        
+        if changedSubsystems.contains("playlist") {
+            // Playlist changed, might need to update queue
+            updateCurrentSong()
+        }
+        
+        if changedSubsystems.contains("options") {
+            updateStatus()
+        }
+        
+        // Post notification for system now playing update
+        NotificationCenter.default.post(name: Notification.Name("MPDStatusChanged"), object: nil)
     }
     
     public func play() {
@@ -280,7 +396,9 @@ public final class MPDClient: ObservableObject {
     }
     
     public func toggle() {
-        sendCommand("pause") { [weak self] _ in
+        print("MPDClient: Toggle command called, connection status: \(connectionStatus)")
+        sendCommand("pause") { [weak self] result in
+            print("MPDClient: Toggle command result: \(result)")
             Task { @MainActor in
                 self?.updateStatus()
             }
@@ -429,10 +547,12 @@ public final class MPDClient: ObservableObject {
     
     public func addToQueueAndPlay(_ uri: String) {
         sendCommand("add \"\(uri)\"") { [weak self] _ in
-            self?.sendCommand("play") { _ in
-                Task { @MainActor in
-                    self?.updateStatus()
-                    self?.updateCurrentSong()
+            Task { @MainActor in
+                self?.sendCommand("play") { _ in
+                    Task { @MainActor in
+                        self?.updateStatus()
+                        self?.updateCurrentSong()
+                    }
                 }
             }
         }
@@ -440,6 +560,15 @@ public final class MPDClient: ObservableObject {
     
     public func playId(_ id: Int) {
         sendCommand("playid \(id)") { [weak self] _ in
+            Task { @MainActor in
+                self?.updateStatus()
+                self?.updateCurrentSong()
+            }
+        }
+    }
+    
+    public func deleteId(_ id: Int) {
+        sendCommand("deleteid \(id)") { [weak self] _ in
             Task { @MainActor in
                 self?.updateStatus()
                 self?.updateCurrentSong()
@@ -568,7 +697,7 @@ public final class MPDClient: ObservableObject {
     public struct QueueItem: Identifiable {
         public let id: Int
         public let position: Int
-        public let file: String
+        public let file: String?
         public let artist: String?
         public let title: String?
         public let album: String?
@@ -693,10 +822,12 @@ public final class MPDClient: ObservableObject {
     
     public func addAndPlay(_ uri: String) {
         sendCommand("add \"\(uri)\"") { [weak self] _ in
-            self?.sendCommand("play") { _ in
-                Task { @MainActor in
-                    self?.updateStatus()
-                    self?.updateCurrentSong()
+            Task { @MainActor in
+                self?.sendCommand("play") { _ in
+                    Task { @MainActor in
+                        self?.updateStatus()
+                        self?.updateCurrentSong()
+                    }
                 }
             }
         }
@@ -707,7 +838,9 @@ public final class MPDClient: ObservableObject {
             if case .success(let data) = result,
                let idStr = data["Id"],
                let id = Int(idStr) {
-                self?.playId(id)
+                Task { @MainActor in
+                    self?.playId(id)
+                }
             }
         }
     }

@@ -17,20 +17,30 @@ public final class MediaKeyHandler: @unchecked Sendable {
     }
     
     public func startListening() {
-        guard !isListening else { return }
+        guard !isListening else { 
+            print("MediaKeyHandler: Already listening, skipping")
+            return 
+        }
         
         let eventMask = CGEventMask(1 << 14) // System defined event type
+        print("MediaKeyHandler: Creating event tap with mask: \(eventMask)")
         
         // Create event tap callback
         let callback: CGEventTapCallBack = { _, type, event, refcon in
-            guard let refcon = refcon else { return Unmanaged.passUnretained(event) }
+            guard let refcon = refcon else { 
+                print("MediaKeyHandler: No refcon in callback")
+                return Unmanaged.passUnretained(event) 
+            }
             
             let handler = Unmanaged<MediaKeyHandler>.fromOpaque(refcon).takeUnretainedValue()
             
             if type == .tapDisabledByTimeout {
+                print("MediaKeyHandler: Event tap disabled by timeout, restarting")
                 handler.restartEventTap()
                 return Unmanaged.passUnretained(event)
             }
+            
+            print("MediaKeyHandler: Received event - type: \(type.rawValue), expecting: 14")
             
             // Check if it's a system defined event (raw value 14)
             guard type.rawValue == 14 else {
@@ -38,6 +48,7 @@ public final class MediaKeyHandler: @unchecked Sendable {
             }
             
             let nsEvent = NSEvent(cgEvent: event)
+            print("MediaKeyHandler: System defined event detected")
             
             if let nsEvent = nsEvent,
                nsEvent.type == .systemDefined,
@@ -48,21 +59,29 @@ public final class MediaKeyHandler: @unchecked Sendable {
                 let keyState = ((keyFlags & 0xFF00) >> 8) == 0xA
                 let keyRepeat = (keyFlags & 0x1) > 0
                 
+                print("MediaKeyHandler: Media key event - keyCode: \(keyCode), keyState: \(keyState), keyRepeat: \(keyRepeat)")
+                
                 if keyState && !keyRepeat {
                     switch Int32(keyCode) {
                     case NX_KEYTYPE_PLAY:
+                        print("MediaKeyHandler: Play/Pause key pressed")
                         handler.handlePlayPause()
                         return nil
                     case NX_KEYTYPE_FAST, NX_KEYTYPE_NEXT:
+                        print("MediaKeyHandler: Next key pressed")
                         handler.handleNext()
                         return nil
                     case NX_KEYTYPE_REWIND, NX_KEYTYPE_PREVIOUS:
+                        print("MediaKeyHandler: Previous key pressed")
                         handler.handlePrevious()
                         return nil
                     default:
+                        print("MediaKeyHandler: Unhandled media key: \(keyCode)")
                         break
                     }
                 }
+            } else {
+                print("MediaKeyHandler: Event not a media key - type: \(nsEvent?.type.rawValue ?? 999), subtype: \(nsEvent?.subtype.rawValue ?? 999)")
             }
             
             return Unmanaged.passUnretained(event)
@@ -80,43 +99,54 @@ public final class MediaKeyHandler: @unchecked Sendable {
         )
         
         guard let eventTap = eventTap else {
-            print("Failed to create event tap. Make sure the app has accessibility permissions.")
+            print("MediaKeyHandler: Failed to create event tap. Make sure the app has accessibility permissions.")
             Task { @MainActor in
                 requestAccessibilityPermissions()
             }
             return
         }
         
+        print("MediaKeyHandler: Event tap created successfully")
+        
         runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, eventTap, 0)
         guard let runLoopSource = runLoopSource else {
-            print("Failed to create run loop source")
+            print("MediaKeyHandler: Failed to create run loop source")
             return
         }
         
-        CFRunLoopAddSource(CFRunLoopGetCurrent(), runLoopSource, .commonModes)
+        print("MediaKeyHandler: Run loop source created successfully")
+        
+        CFRunLoopAddSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
         CGEvent.tapEnable(tap: eventTap, enable: true)
         
         isListening = true
-        print("Media key handler started listening")
+        print("MediaKeyHandler: Successfully started listening for media keys")
     }
     
     public func stopListening() {
-        guard isListening else { return }
+        guard isListening else { 
+            print("MediaKeyHandler: Not currently listening, skipping stop")
+            return 
+        }
+        
+        print("MediaKeyHandler: Stopping media key listening...")
         
         if let eventTap = eventTap {
             CGEvent.tapEnable(tap: eventTap, enable: false)
             CFMachPortInvalidate(eventTap)
+            print("MediaKeyHandler: Event tap disabled and invalidated")
         }
         
         if let runLoopSource = runLoopSource {
-            CFRunLoopRemoveSource(CFRunLoopGetCurrent(), runLoopSource, .commonModes)
+            CFRunLoopRemoveSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
+            print("MediaKeyHandler: Run loop source removed")
         }
         
         eventTap = nil
         runLoopSource = nil
         isListening = false
         
-        print("Media key handler stopped listening")
+        print("MediaKeyHandler: Successfully stopped listening for media keys")
     }
     
     private func restartEventTap() {
@@ -125,18 +155,21 @@ public final class MediaKeyHandler: @unchecked Sendable {
     }
     
     private func handlePlayPause() {
+        print("MediaKeyHandler: Handling play/pause command")
         Task { @MainActor in
             mpdClient.toggle()
         }
     }
     
     private func handleNext() {
+        print("MediaKeyHandler: Handling next command")
         Task { @MainActor in
             mpdClient.next()
         }
     }
     
     private func handlePrevious() {
+        print("MediaKeyHandler: Handling previous command")
         Task { @MainActor in
             mpdClient.previous()
         }
