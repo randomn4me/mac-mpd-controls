@@ -1,41 +1,36 @@
 # Mac MPD Controls
 
-A unified Swift application that combines MPD (Music Player Daemon) control functionality with macOS system integration, providing both menu bar UI and media key support.
+A lightweight command-line MPD (Music Player Daemon) client for macOS that provides media key support and system Now Playing integration with comprehensive album art management.
 
 ## Features
 
 ### Core Functionality
-- **Menu Bar Interface**: Quick access to MPD controls from the macOS menu bar
 - **Media Key Support**: Control MPD using keyboard media keys (Play/Pause, Next, Previous)
-- **Network Communication**: Direct TCP connection to MPD server without external dependencies
-- **Auto-Reconnection**: Automatic reconnection with exponential backoff
+- **System Now Playing Integration**: Display current track in macOS Now Playing center with album artwork
+- **Auto-Reconnection**: Automatic reconnection to MPD server with exponential backoff
 - **Real-time Updates**: Configurable polling interval for status updates
-- **Cross-Platform Core**: Modular design with platform-specific UI and shared core logic
+- **Network Communication**: Direct TCP connection to MPD server without external dependencies
 
-### Playback Features
-- **Volume Control**: Integrated volume slider with visual feedback
-- **Crossfade Control**: Adjust crossfade duration between tracks
-- **Playback Options**: Toggle random, repeat, single, and consume modes
-- **Queue Management**: Add, remove, move, and swap items in the play queue
-- **Playlist Management**: Load, save, and delete playlists
-- **Now Playing Display**: Shows current track information with artist, title, and album
+### Album Art Management
+- **Embedded Art Extraction**: Extract album art from audio files using ffmpeg
+- **Local Art Search**: Find cover art files (cover.jpg, folder.jpg, artwork.jpg, etc.)
+- **Online Art Fetching**: Fallback to Deezer API for missing artwork
+- **Intelligent Caching**: XDG-compliant disk cache to prevent duplicate requests
+- **Multiple Format Support**: Handles JPEG, PNG, and embedded artwork in various audio formats
 
-### Advanced Features
-- **Search Functionality**: Search by artist, album, title, or any field
-- **Database Operations**: Update and rescan music database
-- **Output Control**: Manage multiple audio outputs
-- **Statistics**: View server statistics (songs, albums, uptime, etc.)
-- **Idle Command Support**: Monitor MPD subsystem changes
-- **Notifications**: macOS notifications for track changes
-- **Settings Persistence**: Save connection and preference settings
+### Additional Features
+- **Desktop Notifications**: macOS notifications for track changes (optional)
+- **Comprehensive Logging**: File-based and verbose logging options
+- **Flexible Configuration**: Command-line arguments for all settings
+- **Cross-Platform Core**: Modular design with platform-specific features and shared core logic
 
 ## Architecture
 
 The project is structured as a Swift Package with multiple targets:
 
 - **MPDControlsCore**: Platform-agnostic MPD protocol implementation and types
-- **MPDControls**: macOS-specific application with menu bar UI and media key handling
-- **MPDControlsCLI**: Command-line interface for MPD control
+- **MPDControls**: macOS command-line application with media key handling and Now Playing integration
+- **MPDControlsTests**: Comprehensive test suite including unit, integration, and end-to-end tests
 
 ## Installation
 
@@ -70,13 +65,42 @@ cp .build/release/MPDControls /usr/local/bin/
 /usr/local/bin/MPDControls
 ```
 
+## Usage
+
+```bash
+MPDControls [OPTIONS]
+
+OPTIONS:
+    -h, --help                      Show help message
+    -v, --verbose                   Enable verbose logging to stdout
+    --host HOST                     MPD server host (default: 127.0.0.1)
+    --port PORT                     MPD server port (default: 6600)
+    --update-interval SECONDS       Update interval in seconds (default: 2.0)
+    --no-notifications             Disable desktop notifications
+    --no-auto-reconnect            Disable automatic reconnection
+    --no-system-now-playing        Disable system Now Playing integration
+    --music-directory PATH          Path to music directory for album art
+    --log-file PATH                 Log to file instead of/in addition to stdout
+
+EXAMPLES:
+    # Connect to remote MPD server with verbose logging
+    MPDControls --host 192.168.1.100 --port 6600 -v
+    
+    # Enable album art with local music directory
+    MPDControls --music-directory ~/Music --log-file ~/.mpd-controls.log
+    
+    # Minimal setup with longer update interval
+    MPDControls --no-notifications --update-interval 5.0
+```
+
 ## Development
 
 ### Prerequisites
 
 - Nix package manager (for reproducible development environment)
-- macOS 13+ (for the GUI application)
+- macOS 13+ (for media key and Now Playing support)
 - MPD server running locally or on the network
+- ffmpeg (for album art extraction, optional)
 
 ### Building
 
@@ -96,42 +120,82 @@ make test
 make run
 ```
 
+Or use Nix apps directly:
+
+```bash
+# Run the application (release build)
+nix run
+
+# Run tests
+nix run .#test
+
+# Run development build
+nix run .#dev
+```
+
 ### Project Structure
 
 ```
 .
 ├── Sources/
-│   ├── MPDControlsCore/     # Core MPD protocol and types
-│   ├── MPDControls/          # macOS application
-│   │   ├── Views/            # SwiftUI views for menu bar
-│   │   ├── Network/          # Network connection handling
-│   │   └── MediaKeyHandler.swift
-│   └── MPDControlsCLI/       # Command-line interface
-├── Tests/                    # Test suites
-├── Package.swift             # Swift package configuration
-└── flake.nix                 # Nix development environment
+│   ├── MPDControlsCore/          # Core MPD protocol and types
+│   │   ├── MPDProtocol.swift    # MPD protocol implementation
+│   │   ├── MPDTypes.swift       # MPD data types
+│   │   └── SimpleMPDClient.swift # Basic MPD client
+│   └── MPDControls/              # macOS application
+│       ├── MPDControlsApp.swift  # Main application and CLI parsing
+│       ├── MPDClient.swift       # Enhanced MPD client
+│       ├── MediaKeyHandler.swift # Media key event handling
+│       ├── SystemNowPlayingManager.swift # Now Playing integration
+│       ├── AlbumArtManager.swift # Album art extraction and caching
+│       ├── NotificationManager.swift # Desktop notifications
+│       └── Network/              # Network connection handling
+├── Tests/                        # Test suites
+├── Package.swift                 # Swift package configuration
+└── flake.nix                    # Nix development environment
 ```
 
 ## Configuration
 
-The application stores MPD server configuration in UserDefaults:
-- Host: `mpd_host` (default: "127.0.0.1")
-- Port: `mpd_port` (default: 6600)
+The application accepts configuration through command-line arguments. For persistent configuration, you can:
 
-These can be configured through the Settings interface in the menu bar application.
+1. Create a shell alias:
+```bash
+alias mpd-controls='MPDControls --host 192.168.1.100 --music-directory ~/Music'
+```
+
+2. Use the LaunchAgent (installed via `install.sh`) which can be modified at:
+```
+~/Library/LaunchAgents/com.mpdcontrols.agent.plist
+```
+
+## Album Art Sources
+
+The application searches for album art in the following order:
+
+1. **Embedded artwork** in the audio file (requires ffmpeg)
+2. **Local cover files** in the same directory as the audio file:
+   - cover.jpg, cover.png
+   - folder.jpg, folder.png
+   - artwork.jpg, artwork.png
+   - front.jpg, front.png
+   - album.jpg, album.png
+3. **Online sources** (Deezer API) based on artist and album metadata
+
+Album art is cached in `~/.cache/MPDControls/AlbumArt/` following XDG Base Directory specifications.
 
 ## Testing
 
 The project includes comprehensive test coverage:
 - **Unit Tests**: MPD protocol parsing, command generation, types validation
 - **Integration Tests**: Client functionality, connection management, error handling
-- **End-to-End Tests**: Complete user workflows, playback scenarios, media key simulation
-- **Cross-Platform Tests**: Linux and macOS compatibility verification
+- **End-to-End Tests**: Complete user workflows, playback scenarios
+- **Network Tests**: Connection handling, reconnection logic
 
 Run the test suite:
 ```bash
 # Using Nix environment
-nix develop -c make test
+nix run .#test
 
 # Or directly with Swift
 swift test
@@ -140,10 +204,10 @@ swift test
 ## Origin
 
 This project unifies functionality from two separate projects:
-- **mac-mpd-control**: Media key handling and system integration (Objective-C)
-- **mpd-menubar**: Menu bar UI and network communication (Swift)
+- **[mac-mpd-control](https://github.com/zrnsm/mac-mpd-control)**: Media key handling and system integration (Objective-C)
+- **[mpd-menubar](https://github.com/yoink00/mpd-menubar)**: Menu bar UI and network communication (Swift)
 
-The unified Swift implementation provides better maintainability and modern macOS integration.
+The unified Swift implementation provides better maintainability and modern macOS integration while preserving the core functionality of both original projects.
 
 ## License
 
