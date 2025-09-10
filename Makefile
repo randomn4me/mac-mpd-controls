@@ -30,11 +30,3 @@ clean:
 	@echo "Cleaning build artifacts..."
 	@rm -rf $(BUILD_DIR)
 	@$(SWIFT) package clean
-
-commit:
-	@echo "Committing and pushing changes..."
-	@git add -A
-	@git commit -m "feat: unified Swift MPD controls application"
-	@git push
-
-push: commit

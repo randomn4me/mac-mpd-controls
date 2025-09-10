@@ -439,11 +439,10 @@ public final class MPDClient: ObservableObject {
                 self?.updateStatus()
                 self?.updateCurrentSong()
                 // Schedule additional update after brief delay to ensure UI reflects change
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    Task { @MainActor in
-                        self?.updateStatus()
-                        self?.updateCurrentSong()
-                    }
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
+                    self?.updateStatus()
+                    self?.updateCurrentSong()
                 }
             }
         }
@@ -455,11 +454,10 @@ public final class MPDClient: ObservableObject {
                 self?.updateStatus()
                 self?.updateCurrentSong()
                 // Schedule additional update after brief delay to ensure UI reflects change
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    Task { @MainActor in
-                        self?.updateStatus()
-                        self?.updateCurrentSong()
-                    }
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
+                    self?.updateStatus()
+                    self?.updateCurrentSong()
                 }
             }
         }
@@ -490,11 +488,10 @@ public final class MPDClient: ObservableObject {
                 self?.updateStatus()
                 self?.updateCurrentSong()
                 // Schedule additional update after brief delay to ensure UI reflects change
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    Task { @MainActor in
-                        self?.updateStatus()
-                        self?.updateCurrentSong()
-                    }
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
+                    self?.updateStatus()
+                    self?.updateCurrentSong()
                 }
             }
         }
@@ -506,11 +503,10 @@ public final class MPDClient: ObservableObject {
                 self?.updateStatus()
                 self?.updateCurrentSong()
                 // Schedule additional update after brief delay to ensure UI reflects change
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    Task { @MainActor in
-                        self?.updateStatus()
-                        self?.updateCurrentSong()
-                    }
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
+                    self?.updateStatus()
+                    self?.updateCurrentSong()
                 }
             }
         }
@@ -641,10 +637,13 @@ public final class MPDClient: ObservableObject {
     public func addToQueueAndPlay(_ uri: String) {
         sendCommand("add \"\(uri)\"") { [weak self] _ in
             Task { @MainActor in
-                self?.sendCommand("play") { _ in
-                    Task { @MainActor in
-                        self?.updateStatus()
-                        self?.updateCurrentSong()
+                Task { @MainActor in
+                    guard let strongSelf = self else { return }
+                    strongSelf.sendCommand("play") { _ in
+                        Task { @MainActor in
+                            strongSelf.updateStatus()
+                            strongSelf.updateCurrentSong()
+                        }
                     }
                 }
             }
@@ -916,10 +915,13 @@ public final class MPDClient: ObservableObject {
     public func addAndPlay(_ uri: String) {
         sendCommand("add \"\(uri)\"") { [weak self] _ in
             Task { @MainActor in
-                self?.sendCommand("play") { _ in
-                    Task { @MainActor in
-                        self?.updateStatus()
-                        self?.updateCurrentSong()
+                Task { @MainActor in
+                    guard let strongSelf = self else { return }
+                    strongSelf.sendCommand("play") { _ in
+                        Task { @MainActor in
+                            strongSelf.updateStatus()
+                            strongSelf.updateCurrentSong()
+                        }
                     }
                 }
             }

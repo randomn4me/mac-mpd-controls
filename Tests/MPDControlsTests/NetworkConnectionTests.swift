@@ -132,6 +132,11 @@ class TestNetworkConnection: NetworkConnectionProtocol {
         stateUpdateHandler?(.cancelled)
     }
     
+    func cancel() {
+        disconnectCalled = true
+        stateUpdateHandler?(.cancelled)
+    }
+    
     func send(data: Data, completion: @escaping (Error?) -> Void) {
         sendCalled = true
         lastSentData = data

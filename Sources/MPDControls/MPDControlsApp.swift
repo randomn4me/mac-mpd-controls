@@ -226,9 +226,9 @@ class AppState: ObservableObject {
     }
     
     deinit {
-        Task { @MainActor in
-            self.stopUpdateTimer()
-        }
+        // Stop timer synchronously during deinit to avoid async issues
+        updateTimer?.invalidate()
+        updateTimer = nil
         Logger.shared.log("AppState deinitialized")
     }
     

@@ -10,6 +10,7 @@ public final class SystemNowPlayingManager: NSObject {
     private let albumArtManager: AlbumArtManager
     private var isEnabled: Bool = false
     private var lastSongFile: String?
+    private var lastAlbumKey: String? // Track album changes
     private var currentArtwork: Any? // Store current MPMediaItemArtwork
     
     public init(mpdClient: MPDClient) {
@@ -141,18 +142,29 @@ public final class SystemNowPlayingManager: NSObject {
         // Media type
         nowPlayingInfo[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
         
-        // Check if this is a different song than last time
+        // Check if this is a different song or album than last time
         let currentSongFile = currentSong.file
         let songChanged = currentSongFile != lastSongFile
+        
+        // Create album key for comparison
+        let artist = currentSong.artist ?? "unknown_artist"
+        let album = currentSong.album ?? "unknown_album"
+        let currentAlbumKey = "\(artist)_\(album)"
+        let albumChanged = currentAlbumKey != lastAlbumKey
         
         if songChanged {
             Logger.shared.log("SystemNowPlayingManager: Song changed from '\(lastSongFile ?? "nil")' to '\(currentSongFile ?? "nil")'")
             lastSongFile = currentSongFile
         }
         
-        // Only fetch album artwork if the song has changed
-        if songChanged {
-            Logger.shared.log("SystemNowPlayingManager: Fetching album art for new song")
+        if albumChanged {
+            Logger.shared.log("SystemNowPlayingManager: Album changed from '\(lastAlbumKey ?? "nil")' to '\(currentAlbumKey)'")
+            lastAlbumKey = currentAlbumKey
+        }
+        
+        // Only fetch album artwork if the album has changed (not just the song)
+        if albumChanged {
+            Logger.shared.log("SystemNowPlayingManager: Fetching album art for new album")
             // Fetch album artwork asynchronously
             albumArtManager.getAlbumArt(for: currentSong) { [weak self] albumArt in
                 Logger.shared.log("SystemNowPlayingManager: Album art callback received - albumArt is \(albumArt != nil ? "NOT nil" : "nil")")
@@ -209,7 +221,7 @@ public final class SystemNowPlayingManager: NSObject {
                 }
             }
         } else {
-            Logger.shared.log("SystemNowPlayingManager: Same song, not fetching album art but updating basic info")
+            Logger.shared.log("SystemNowPlayingManager: Same album, not fetching album art but updating basic info")
             // For same song, preserve existing artwork when updating basic info
             if let artwork = currentArtwork {
                 nowPlayingInfo[MPMediaItemPropertyArtwork] = artwork
@@ -222,8 +234,9 @@ public final class SystemNowPlayingManager: NSObject {
     private func clearNowPlayingInfo() {
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
         lastSongFile = nil
+        lastAlbumKey = nil
         currentArtwork = nil
-        Logger.shared.log("SystemNowPlayingManager: Cleared now playing info, last song file, and artwork")
+        Logger.shared.log("SystemNowPlayingManager: Cleared now playing info, last song file, album key, and artwork")
     }
     
     private func setupRemoteCommandCenter() {

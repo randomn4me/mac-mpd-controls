@@ -1,5 +1,6 @@
 import Foundation
 @testable import MPDControlsCore
+@testable import MPDControls
 
 #if canImport(XCTest)
 import XCTest
@@ -23,6 +24,11 @@ class MockNetworkConnection: NetworkConnectionProtocol {
     }
     
     func disconnect() {
+        isConnected = false
+        stateUpdateHandler?(.cancelled)
+    }
+    
+    func cancel() {
         isConnected = false
         stateUpdateHandler?(.cancelled)
     }

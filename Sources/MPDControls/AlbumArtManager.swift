@@ -6,7 +6,8 @@ import AppKit
 @MainActor
 public final class AlbumArtManager {
     private let mpdClient: MPDClient
-    private var artworkCache: [String: NSImage] = [:]
+    private var artworkCache: [String: NSImage] = [:] // Keyed by album+artist
+    private var fileToAlbumCache: [String: String] = [:] // Maps file URI to album key
     private var currentlyFetching: Set<String> = []
     private var musicDirectory: String?
     private let diskCacheDirectory: URL
@@ -61,6 +62,13 @@ public final class AlbumArtManager {
         Logger.shared.log("AlbumArtManager: No music directory found in common locations")
     }
     
+    private func albumCacheKey(for song: MPDClient.Song) -> String {
+        // Create a cache key based on album and artist (not file path)
+        let artist = song.artist ?? "unknown_artist"
+        let album = song.album ?? "unknown_album"
+        return "\(artist)_\(album)"
+    }
+    
     public func getAlbumArt(for song: MPDClient.Song, completion: @escaping (NSImage?) -> Void) {
         guard let fileURI = song.file else {
             Logger.shared.log("AlbumArtManager: No file URI for song")
@@ -68,63 +76,67 @@ public final class AlbumArtManager {
             return
         }
         
-        Logger.shared.log("AlbumArtManager: Requesting album art for: \(fileURI)")
+        let albumKey = albumCacheKey(for: song)
+        Logger.shared.log("AlbumArtManager: Requesting album art for album key: \(albumKey) (file: \(fileURI))")
         
-        // Check memory cache first
-        if let cachedImage = artworkCache[fileURI] {
-            Logger.shared.log("AlbumArtManager: Found memory cached album art for: \(fileURI)")
+        // Store the mapping for future reference
+        fileToAlbumCache[fileURI] = albumKey
+        
+        // Check memory cache first using album key
+        if let cachedImage = artworkCache[albumKey] {
+            Logger.shared.log("AlbumArtManager: Found memory cached album art for album: \(albumKey)")
             completion(cachedImage)
             return
         }
         
-        // Check disk cache second
-        if let diskCachedImage = loadFromDiskCache(fileURI: fileURI) {
-            Logger.shared.log("AlbumArtManager: Found disk cached album art for: \(fileURI)")
-            artworkCache[fileURI] = diskCachedImage // Also store in memory cache
+        // Check disk cache second using album key
+        if let diskCachedImage = loadFromDiskCache(albumKey: albumKey) {
+            Logger.shared.log("AlbumArtManager: Found disk cached album art for album: \(albumKey)")
+            artworkCache[albumKey] = diskCachedImage // Store in memory cache
             completion(diskCachedImage)
             return
         }
         
-        // Avoid duplicate requests
-        if currentlyFetching.contains(fileURI) {
-            Logger.shared.log("AlbumArtManager: Already fetching album art for: \(fileURI)")
+        // Avoid duplicate requests for the same album
+        if currentlyFetching.contains(albumKey) {
+            Logger.shared.log("AlbumArtManager: Already fetching album art for album: \(albumKey)")
             completion(nil)
             return
         }
         
-        Logger.shared.log("AlbumArtManager: Starting album art fetch for: \(fileURI)")
-        currentlyFetching.insert(fileURI)
+        Logger.shared.log("AlbumArtManager: Starting album art fetch for album: \(albumKey)")
+        currentlyFetching.insert(albumKey)
         
         // Try to extract embedded album art first using ffmpeg
         extractEmbeddedAlbumArt(fileURI: fileURI) { [weak self] image in
             if let image = image {
-                Logger.shared.log("AlbumArtManager: Successfully extracted embedded album art for: \(fileURI)")
-                self?.artworkCache[fileURI] = image
-                self?.saveToDiskCache(image: image, fileURI: fileURI)
-                self?.currentlyFetching.remove(fileURI)
+                Logger.shared.log("AlbumArtManager: Successfully extracted embedded album art for album: \(albumKey)")
+                self?.artworkCache[albumKey] = image
+                self?.saveToDiskCache(image: image, albumKey: albumKey)
+                self?.currentlyFetching.remove(albumKey)
                 completion(image)
             } else {
                 Logger.shared.log("AlbumArtManager: No embedded album art found, trying local cover files for: \(fileURI)")
                 // Fallback to looking for cover files in the directory
                 self?.findLocalCoverArt(fileURI: fileURI) { [weak self] image in
                     if let image = image {
-                        Logger.shared.log("AlbumArtManager: Found local cover art for: \(fileURI)")
-                        self?.artworkCache[fileURI] = image
-                        self?.saveToDiskCache(image: image, fileURI: fileURI)
-                        self?.currentlyFetching.remove(fileURI)
+                        Logger.shared.log("AlbumArtManager: Found local cover art for album: \(albumKey)")
+                        self?.artworkCache[albumKey] = image
+                        self?.saveToDiskCache(image: image, albumKey: albumKey)
+                        self?.currentlyFetching.remove(albumKey)
                         completion(image)
                     } else {
                         Logger.shared.log("AlbumArtManager: No local cover art found, trying online search for: \(fileURI)")
                         // Final fallback: try online search
                         self?.fetchOnlineAlbumArt(for: song) { [weak self] onlineImage in
                             if let onlineImage = onlineImage {
-                                Logger.shared.log("AlbumArtManager: Found online album art for: \(fileURI)")
-                                self?.artworkCache[fileURI] = onlineImage
-                                self?.saveToDiskCache(image: onlineImage, fileURI: fileURI)
+                                Logger.shared.log("AlbumArtManager: Found online album art for album: \(albumKey)")
+                                self?.artworkCache[albumKey] = onlineImage
+                                self?.saveToDiskCache(image: onlineImage, albumKey: albumKey)
                             } else {
-                                Logger.shared.log("AlbumArtManager: No album art found anywhere for: \(fileURI)")
+                                Logger.shared.log("AlbumArtManager: No album art found anywhere for album: \(albumKey)")
                             }
-                            self?.currentlyFetching.remove(fileURI)
+                            self?.currentlyFetching.remove(albumKey)
                             completion(onlineImage)
                         }
                     }
@@ -327,7 +339,9 @@ public final class AlbumArtManager {
                     Logger.shared.log("AlbumArtManager: Found album art URL: \(coverURL)")
                     
                     // Download the image
-                    self.downloadImage(from: coverURL, completion: completion)
+                    Task { @MainActor in
+                        self.downloadImage(from: coverURL, completion: completion)
+                    }
                 } else {
                     Logger.shared.log("AlbumArtManager: No album art found in Deezer API response")
                     completion(nil)
@@ -377,23 +391,24 @@ public final class AlbumArtManager {
     
     public func clearCache() {
         artworkCache.removeAll()
+        fileToAlbumCache.removeAll()
         currentlyFetching.removeAll()
         clearDiskCache()
     }
     
     // MARK: - Disk Cache Methods
     
-    private func cacheKey(for fileURI: String) -> String {
-        // Create a safe filename from the file URI
-        return fileURI.replacingOccurrences(of: "/", with: "_")
+    private func diskCacheFileName(for albumKey: String) -> String {
+        // Create a safe filename from the album key
+        return albumKey.replacingOccurrences(of: "/", with: "_")
             .replacingOccurrences(of: ":", with: "_")
             .replacingOccurrences(of: " ", with: "_")
             .appending(".jpg")
     }
     
-    private func saveToDiskCache(image: NSImage, fileURI: String) {
-        let cacheKey = cacheKey(for: fileURI)
-        let cacheURL = diskCacheDirectory.appendingPathComponent(cacheKey)
+    private func saveToDiskCache(image: NSImage, albumKey: String) {
+        let cacheFileName = diskCacheFileName(for: albumKey)
+        let cacheURL = diskCacheDirectory.appendingPathComponent(cacheFileName)
         
         guard let tiffData = image.tiffRepresentation,
               let bitmap = NSBitmapImageRep(data: tiffData),
@@ -404,15 +419,15 @@ public final class AlbumArtManager {
         
         do {
             try jpegData.write(to: cacheURL)
-            Logger.shared.log("AlbumArtManager: Saved image to disk cache: \(cacheKey)")
+            Logger.shared.log("AlbumArtManager: Saved image to disk cache: \(cacheFileName)")
         } catch {
             Logger.shared.log("AlbumArtManager: Failed to save image to disk cache: \(error)")
         }
     }
     
-    private func loadFromDiskCache(fileURI: String) -> NSImage? {
-        let cacheKey = cacheKey(for: fileURI)
-        let cacheURL = diskCacheDirectory.appendingPathComponent(cacheKey)
+    private func loadFromDiskCache(albumKey: String) -> NSImage? {
+        let cacheFileName = diskCacheFileName(for: albumKey)
+        let cacheURL = diskCacheDirectory.appendingPathComponent(cacheFileName)
         
         guard FileManager.default.fileExists(atPath: cacheURL.path) else {
             return nil
@@ -424,7 +439,7 @@ public final class AlbumArtManager {
             if let modificationDate = attributes[.modificationDate] as? Date {
                 let daysSinceModification = Date().timeIntervalSince(modificationDate) / (24 * 60 * 60)
                 if daysSinceModification > 30 {
-                    Logger.shared.log("AlbumArtManager: Disk cache file expired, removing: \(cacheKey)")
+                    Logger.shared.log("AlbumArtManager: Disk cache file expired, removing: \(cacheFileName)")
                     try FileManager.default.removeItem(at: cacheURL)
                     return nil
                 }
